@@ -242,3 +242,24 @@ Rationale: policy preview should match the same signed-pack inputs that future T
 Locked outcome: built-in packs remain trusted in all modes. Safe Mode allows project-local development packs with warnings. Team and Production previews allow only valid trusted signatures diagnostically. The preview remains non-enforcing and does not change pack loading behavior.
 
 Boundary: Step 35 does not add signing tools, trust-root mutation, pack install/update, registry downloads, Team/Production enforcement, or Gadget execution behavior changes.
+
+## Step 35 validation baseline
+
+Decision: accept commit `14b0a4f` as the current externally validated Step 35 baseline.
+
+Rationale: Codex ran the required Rust validation flow after the Step 35 pack trust/signing updates and applied only bounded fixes for formatting, compile correctness, clippy, and test behavior. The final validation flow passed end-to-end on Rust/Cargo 1.89.0.
+
+Validation commands passed:
+
+```text
+cargo fmt --check
+cargo check
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+cargo build --release
+```
+
+Locked outcome: Step 35 source is the current validated baseline. Commit `c5fbd78` remains a historical prior validation point, but commit `14b0a4f` supersedes it for current work.
+
+Boundary: the validation fixes did not add new feature scope, arbitrary shell, remote Git expansion, pack trust enforcement, signing tools, trust-root mutation, Linux admin behavior, database behavior, cloud behavior, or deployment behavior.
+

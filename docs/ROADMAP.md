@@ -4,13 +4,16 @@ Date: 2026-05-13
 
 ## Current source and validation status
 
+Current source checkpoint:
+
 ```text
-current source checkpoint: Step 35 - pack trust policy preview with signature results
-validation status: external Rust validation pending after post-Step-22 source changes
-last validated commit: c5fbd78
+Step 35 - pack trust policy preview with signature results
+validation status: external Rust validation passed after bounded fixes
+validated commit: 14b0a4f
+validation date: 2026-05-13
 ```
 
-Validation passed on the last validated baseline:
+External Rust validation passed end-to-end on the current Step 35 baseline:
 
 ```text
 cargo fmt --check                                      PASS
@@ -20,7 +23,7 @@ cargo clippy --all-targets --all-features -- -D warnings  PASS
 cargo build --release                                 PASS
 ```
 
-Rust/Cargo versions reported by Codex:
+Validation environment reported by Codex:
 
 ```text
 rustc 1.89.0 (29483883e 2025-08-04)
@@ -36,7 +39,7 @@ Use four scopes when describing progress:
 | Core safety spine through guarded remote PR creation | 100% | Core types, init, ledger, evidence, policy, manifest loading, providers, patch plan, approval records, approved patch apply, allowlisted test execution, local Git status, protected local branch creation, approved local commit scaffolding, local PR body generation, approval expiration enforcement, guarded remote PR creation, and Rust validation are complete for this baseline. |
 | Local Developer MVP | 98-99% | The core local workflow is implemented, validated, and alpha-packaged. Remaining work is usability polish and fixes found by users. |
 | Guarded remote PR MVP | 85-90% | GitHub PR creation exists, is disabled by default, dry-run by default, branch-constrained, duplicate-aware, and evidence/audit-backed. Remaining work is provider-specific polish and live validation. |
-| Full Gadgets Framework roadmap | 54-58% | Developer workflow is alpha-packaged, remote PR safety is hardened, redaction is centralized, pack trust/signing is designed, non-enforcing pack trust/root inspection is scaffolded, diagnostic evidence/audit is emitted, policy preview is signature-aware, signature metadata diagnostics are scaffolded, and Ed25519 signature verification diagnostics are implemented. Team workflows, Linux Server Admin packs, database/cloud/deployment packs, pack trust enforcement, stronger secret handling, and UI/team integrations remain future work. |
+| Full Gadgets Framework roadmap | 56-60% | Developer workflow is alpha-packaged and validated through Step 35. Remote PR safety is hardened, redaction is centralized, pack trust/signing is designed, non-enforcing pack trust/root inspection is scaffolded, diagnostic evidence/audit is emitted, policy preview is signature-aware, signature metadata diagnostics are scaffolded, and Ed25519 signature verification diagnostics are implemented. Team workflows, Linux Server Admin packs, database/cloud/deployment packs, pack trust enforcement, signing tools, stronger secret handling, and UI/team integrations remain future work. |
 
 ## Phase 0 - Contract and skeleton
 

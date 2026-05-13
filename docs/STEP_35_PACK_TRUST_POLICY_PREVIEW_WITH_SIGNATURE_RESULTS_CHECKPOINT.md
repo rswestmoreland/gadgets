@@ -49,7 +49,7 @@ Step 35 does not add:
 
 ## Validation note
 
-External Rust validation was not rerun after Step 35. Run the full validation flow before release:
+External Rust validation was rerun after Step 35 and passed end-to-end in commit `14b0a4f`. The validation used Rust/Cargo 1.89.0 and passed:
 
 ```bash
 cargo fmt --check
@@ -58,3 +58,5 @@ cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
 ```
+
+The validation fixes were bounded to formatting, compile correctness, test/lint correctness, and minimal bug fixes discovered by the validation flow. No new feature scope was added.

@@ -27,9 +27,9 @@ Repository license files:
 
 ## Validation baseline
 
-Status: closed for current Developer MVP baseline.
+Status: closed for current Step 35 baseline.
 
-The current validated baseline is commit `c5fbd78`. The full external Rust validation flow passed on Rust/Cargo 1.89.0:
+The current validated baseline is commit `14b0a4f`. The full external Rust validation flow passed on Rust/Cargo 1.89.0:
 
 ```text
 cargo fmt --check                                      PASS
@@ -39,7 +39,7 @@ cargo clippy --all-targets --all-features -- -D warnings  PASS
 cargo build --release                                 PASS
 ```
 
-Future code changes must be revalidated before they become a new authoritative baseline.
+The previous validated baseline was commit `c5fbd78`. Commit `14b0a4f` supersedes it for Step 35 source. Future code changes must be revalidated before they become a new authoritative baseline.
 
 
 ## Developer MVP alpha packaging

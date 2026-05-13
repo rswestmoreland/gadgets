@@ -1,7 +1,7 @@
 # Step 35 - Pack Trust Policy Preview With Signature Results
 
 Date: 2026-05-13
-Status: complete at checkpoint level; external Rust validation deferred
+Status: complete and externally validated in commit `14b0a4f`
 
 ## Purpose
 
@@ -123,4 +123,14 @@ Step 35 does not add:
 
 ## Validation note
 
-External Rust validation was not rerun after Step 35. The last full external Rust validation baseline remains commit `c5fbd78`. Steps 24, 25, 27, 28, 30, 31, 32, 34, and 35 include Rust source changes after that baseline.
+External Rust validation was rerun after Step 35 and passed end-to-end in commit `14b0a4f`. The validation used Rust/Cargo 1.89.0 and passed:
+
+```bash
+cargo fmt --check
+cargo check
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+cargo build --release
+```
+
+The validation fixes were bounded to formatting, compile correctness, test/lint correctness, and minimal bug fixes discovered by the validation flow. No new feature scope was added.

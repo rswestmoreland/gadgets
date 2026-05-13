@@ -10,13 +10,16 @@ The goal is a trustworthy, auditable authority boundary where provider output re
 
 ## Current source and validation status
 
+Current source checkpoint:
+
 ```text
-current source checkpoint: Step 35 - pack trust policy preview with signature results
-validation status: external Rust validation pending after post-Step-22 source changes
-last validated commit: c5fbd78
+Step 35 - pack trust policy preview with signature results
+validation status: external Rust validation passed after bounded fixes
+validated commit: 14b0a4f
+validation date: 2026-05-13
 ```
 
-Validation passed on the last validated baseline:
+External Rust validation passed end-to-end on the current Step 35 baseline:
 
 ```text
 cargo fmt --check                                      PASS
@@ -26,7 +29,7 @@ cargo clippy --all-targets --all-features -- -D warnings  PASS
 cargo build --release                                 PASS
 ```
 
-Rust/Cargo versions reported by Codex:
+Validation environment reported by Codex:
 
 ```text
 rustc 1.89.0 (29483883e 2025-08-04)
@@ -300,7 +303,7 @@ Purpose:
 
 - record the validated `c5fbd78` baseline
 - reconcile README, roadmap, implementation plan, walkthrough, and progress docs
-- remove stale active-doc claims that Rust validation remains pending
+- remove stale active-doc claims that Rust validation remained pending before commit `14b0a4f`
 - preserve the unsupported behavior boundaries
 
 ### Step 23 - Developer MVP alpha packaging
@@ -394,7 +397,7 @@ The command inspects pack source and trust metadata, reports a diagnostic trust 
 
 ## Step 28 - Trust root inspection scaffold
 
-Status: complete at checkpoint/code level. Rust validation was not rerun after this source change.
+Status: complete and validated in commit `14b0a4f`.
 
 Implemented command:
 

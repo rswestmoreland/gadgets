@@ -4,19 +4,19 @@ Date: 2026-05-13
 
 ## Current status
 
-Step 35 is complete at checkpoint level. It updates the non-enforcing `gadgets pack trust preview` command to consume real signature diagnostic results from Step 34.
+Step 35 is complete and externally validated in commit `14b0a4f`. It updates the non-enforcing `gadgets pack trust preview` command to consume real signature diagnostic results from Step 34.
 
-The last full external Rust validation baseline remains commit `c5fbd78`. External validation has not been rerun after Steps 24, 25, 27, 28, 30, 31, 32, 34, and 35.
+The previous full validation baseline was commit `c5fbd78`; it is now superseded by commit `14b0a4f` for Step 35 source.
 
 ## Progress estimate
 
 | Scope | Estimate | Notes |
 |---|---:|---|
-| Core safety spine through guarded remote PR creation | 100% | Implemented and previously validated through commit `c5fbd78`. |
-| Local Developer MVP | 98-99% | Alpha-packaged; later changes need revalidation. |
+| Core safety spine through guarded remote PR creation | 100% | Implemented and validated through commit `14b0a4f`. |
+| Local Developer MVP | 98-99% | Alpha-packaged and validated through commit `14b0a4f`. |
 | Guarded remote PR MVP | 85-90% | Disabled by default, dry-run by default, branch-constrained, duplicate-aware, evidence/audit-backed. |
-| Pack trust diagnostics | 75-80% | Design, inspection, trust-root diagnostics, evidence/audit emission, policy preview, metadata diagnostics, Ed25519 verification diagnostics, and signature-aware policy preview are implemented. Enforcement and signing tools remain deferred. |
-| Full Gadgets Framework roadmap | 54-58% | Developer workflow and non-enforcing trust diagnostics are advanced; Team/Linux/database/cloud/deployment packs remain future work. |
+| Pack trust diagnostics | 80-85% | Design, inspection, trust-root diagnostics, evidence/audit emission, policy preview, metadata diagnostics, Ed25519 verification diagnostics, and signature-aware policy preview are implemented and validated. Enforcement and signing tools remain deferred. |
+| Full Gadgets Framework roadmap | 56-60% | Developer workflow and non-enforcing trust diagnostics are advanced and validated; Team/Linux/database/cloud/deployment packs remain future work. |
 
 ## Step 35 completed
 
