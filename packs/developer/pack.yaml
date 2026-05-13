@@ -1,0 +1,30 @@
+schema_version: gadgets.framework/pack/v0.1
+kind: GadgetPack
+
+metadata:
+  name: developer
+  version: 0.1.0
+  display_name: Developer Pack
+  description: Safe local software development automation.
+
+default_mode: safe
+
+gadgets:
+  - coordinator
+  - policy
+  - audit.ledger
+  - approval
+  - filesystem.read
+  - patch.writer
+  - test.runner
+  - git.pr
+  - documentation.writer
+  - secrets.guardian
+
+requires:
+  providers:
+    - filesystem
+    - ledger
+    - evidence
+  zones:
+    - local_repo

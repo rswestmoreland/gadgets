@@ -1,0 +1,82 @@
+schema_version: gadgets.framework/config/v0.1
+
+mode: safe
+default_model_profile: mock_default
+
+model_profiles:
+  mock_default:
+    provider: mock
+    model: deterministic-mock
+
+  # openai_default:
+  #   provider: openai
+  #   model: gpt-5.5
+  #   api_key_env: OPENAI_API_KEY
+
+  # anthropic_default:
+  #   provider: anthropic
+  #   model: claude-sonnet-4-6
+  #   api_key_env: ANTHROPIC_API_KEY
+
+installed_packs:
+  - developer
+
+zones:
+  local_repo:
+    type: local_repo
+    root: "."
+    readable_paths:
+      - "."
+    writable_paths: []
+    denied_paths:
+      - ".git/"
+      - ".gadgets/"
+      - ".env"
+      - "secrets/"
+      - "**/*.pem"
+      - "**/*.key"
+      - "**/*secret*"
+      - "**/*credential*"
+
+audit:
+  ledger_path: ".gadgets/ledger/events.jsonl"
+
+evidence:
+  root: ".gadgets/runs"
+
+approval:
+  require_for_all_writes: true
+  # Optional patch approval expiration uses strict UTC RFC3339 without fractional seconds.
+  # Example: gadgets approval request-patch <run-id> --expires-at 2999-01-01T00:00:00Z
+
+# Step 17 loads named test commands from this list.
+# Keep empty until this local project explicitly opts in to a command.
+test_commands: []
+
+# Example shape:
+# test_commands:
+#   - name: cargo_test
+#     command: cargo test
+#     working_dir: "."
+#     timeout_seconds: 300
+
+git:
+  # Remote PR creation is disabled by default. When enabled, Gadgets creates
+  # one GitHub pull request from verified approval and local PR-body evidence.
+  # It does not push branches; the head branch must already exist remotely.
+  remote_pr:
+    enabled: false
+    provider: github
+    owner: ""
+    repo: ""
+    api_base: https://api.github.com
+    token_env: GITHUB_TOKEN
+    default_base_branch: main
+
+  protected_branches:
+    - main
+    - master
+    - trunk
+    - production
+    - prod
+    - release/

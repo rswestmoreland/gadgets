@@ -1,0 +1,31 @@
+schema_version: gadgets.framework/pack/v0.1
+kind: GadgetPack
+
+metadata:
+  name: linux-admin-change
+  version: 0.1.0
+  display_name: Linux Server Admin Change Pack
+  description: Controlled Linux server mutation with approval, rollback, evidence, and audit.
+
+default_mode: production
+
+gadgets:
+  - linux.service.manager
+  - linux.package.patch.executor
+  - linux.firewall.executor
+  - linux.files.cleanup.executor
+  - linux.config.editor
+  - linux.container.runtime
+  - linux.ci.runner.helper
+  - linux.maintenance.window
+  - linux.reboot.coordinator
+
+safety:
+  highest_permission_level: release
+  production_capable: true
+  destructive_capable: true
+  requires_approval: true
+
+notes:
+  - Do not implement a generic root-shell Gadget.
+  - Use narrow allowlisted providers only.

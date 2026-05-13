@@ -1,0 +1,18 @@
+[package]
+name = "gadgets-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI entrypoint for Gadgets Framework."
+license = "MIT OR Apache-2.0"
+authors = ["Richard S. Westmoreland <dev@rswestmore.land>"]
+
+[dependencies]
+gadgets-core = { path = "../gadgets-core" }
+gadgets-approval = { path = "../gadgets-approval" }
+gadgets-evidence = { path = "../gadgets-evidence" }
+gadgets-ledger = { path = "../gadgets-ledger" }
+gadgets-provider = { path = "../gadgets-provider" }
+gadgets-policy = { path = "../gadgets-policy" }
+gadgets-tools = { path = "../gadgets-tools" }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"

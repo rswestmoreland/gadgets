@@ -1,0 +1,47 @@
+schema_version: gadgets.framework/v0.1
+kind: Gadget
+metadata:
+  name: documentation.writer
+  version: 0.1.0
+  display_name: Documentation Gadget
+  description: Writes or updates scoped Markdown documentation after approval.
+runtime:
+  model_profile: mock_default
+  execution_mode: change
+permission_level: change
+capabilities:
+  - docs.write
+boundaries:
+  zones:
+    - local_repo
+  filesystem:
+    roots:
+      - "."
+    writable: true
+    readable_paths:
+      - "."
+    writable_paths:
+      - "docs/"
+      - "README.md"
+    denied_paths:
+      - ".git/"
+      - ".gadgets/"
+      - ".env"
+      - "secrets/"
+      - "**/*.pem"
+      - "**/*.key"
+tools:
+  allowed:
+    - file.patch
+    - file.write
+handoffs:
+  allowed_targets: []
+evidence:
+  required:
+    - summary
+    - diff
+    - files_changed
+    - assumptions
+approval:
+  required_for:
+    - local_write

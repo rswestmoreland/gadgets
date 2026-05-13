@@ -1,0 +1,54 @@
+schema_version: gadgets.framework/v0.1
+kind: Gadget
+metadata:
+  name: git.pr
+  version: 0.1.0
+  display_name: Git Pull Request Gadget
+  description: Reads local Git status, creates protected local branches, creates approved local commits, generates local PR body Markdown, and creates guarded remote GitHub PRs when explicitly enabled.
+runtime:
+  model_profile: mock_default
+  execution_mode: change
+permission_level: change
+capabilities:
+  - git.status
+  - git.branch.create
+  - git.commit.create
+  - git.pr.body.generate
+  - git.pr.create
+boundaries:
+  zones:
+    - local_repo
+  filesystem:
+    roots:
+      - "."
+    writable: false
+    denied_paths:
+      - ".git/"
+      - ".gadgets/"
+      - ".env"
+      - "secrets/"
+      - "**/*.pem"
+      - "**/*.key"
+tools:
+  allowed:
+    - git.status
+    - git.branch.create
+    - git.commit.create
+    - git.pr.body.generate
+    - git.pr.create
+handoffs:
+  allowed_targets:
+    - documentation.writer
+evidence:
+  required:
+    - summary
+    - git_status
+    - branch_name
+    - protected_branches
+    - approved_files
+    - commit_result
+    - pr_body
+    - assumptions
+approval:
+  required_for:
+    - git_write

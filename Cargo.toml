@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    "crates/gadgets-cli",
+    "crates/gadgets-core",
+    "crates/gadgets-policy",
+    "crates/gadgets-approval",
+    "crates/gadgets-ledger",
+    "crates/gadgets-evidence",
+    "crates/gadgets-provider",
+    "crates/gadgets-tools"
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Richard S. Westmoreland <dev@rswestmore.land>"]

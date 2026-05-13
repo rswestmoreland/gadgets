@@ -1,0 +1,30 @@
+schema_version: gadgets.framework/v0.1
+kind: Gadget
+metadata:
+  name: approval
+  version: 0.1.0
+  display_name: Approval Gadget
+  description: Creates and records scoped human approval requests for risky or mutating actions.
+runtime:
+  model_profile: mock_default
+  execution_mode: plan
+permission_level: plan
+capabilities:
+  - approval.request
+  - approval.record
+boundaries:
+  zones:
+    - local_repo
+tools:
+  allowed:
+    - approval.request
+    - approval.record
+handoffs:
+  allowed_targets: []
+evidence:
+  required:
+    - summary
+    - approval_scope
+    - assumptions
+approval:
+  required_for: []

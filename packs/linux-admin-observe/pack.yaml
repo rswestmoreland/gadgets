@@ -1,0 +1,25 @@
+schema_version: gadgets.framework/pack/v0.1
+kind: GadgetPack
+
+metadata:
+  name: linux-admin-observe
+  version: 0.1.0
+  display_name: Linux Server Admin Observe Pack
+  description: Safe diagnostics and planning for Linux servers.
+
+default_mode: safe
+
+gadgets:
+  - linux.host.inventory
+  - linux.process_port.inspector
+  - linux.service.observe
+  - linux.firewall.planner
+  - linux.files.cleanup.planner
+  - linux.package.patch.planner
+  - linux.backup.restore.verifier
+
+safety:
+  highest_permission_level: plan
+  production_capable: false
+  destructive_capable: false
+  requires_approval: false

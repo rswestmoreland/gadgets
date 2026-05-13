@@ -1,0 +1,26 @@
+schema_version: gadgets.framework/v0.1
+kind: Gadget
+metadata:
+  name: policy
+  version: 0.1.0
+  display_name: Policy Gadget
+  description: Evaluates structured requests against deterministic runtime policy.
+runtime:
+  model_profile: mock_default
+  execution_mode: observe
+permission_level: observe
+capabilities:
+  - policy.evaluate
+boundaries:
+  zones:
+    - local_repo
+tools:
+  allowed: []
+handoffs:
+  allowed_targets: []
+evidence:
+  required:
+    - summary
+    - policy_decisions
+approval:
+  required_for: []

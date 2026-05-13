@@ -1,0 +1,11 @@
+[package]
+name = "gadgets-core"
+version = "0.1.0"
+edition = "2021"
+description = "Core types for Gadgets Framework."
+license = "MIT OR Apache-2.0"
+authors = ["Richard S. Westmoreland <dev@rswestmore.land>"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"

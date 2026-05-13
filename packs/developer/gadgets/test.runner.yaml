@@ -1,0 +1,40 @@
+schema_version: gadgets.framework/v0.1
+kind: Gadget
+metadata:
+  name: test.runner
+  version: 0.1.0
+  display_name: Test Runner Gadget
+  description: Runs allowlisted test commands and records results as evidence.
+runtime:
+  model_profile: mock_default
+  execution_mode: change
+permission_level: change
+capabilities:
+  - test.run
+boundaries:
+  zones:
+    - local_repo
+  filesystem:
+    roots:
+      - "."
+    writable: false
+    denied_paths:
+      - ".git/"
+      - ".gadgets/"
+      - ".env"
+      - "secrets/"
+tools:
+  allowed:
+    - test.run
+handoffs:
+  allowed_targets:
+    - documentation.writer
+evidence:
+  required:
+    - summary
+    - test_results
+    - command_log
+    - assumptions
+approval:
+  required_for:
+    - test_run

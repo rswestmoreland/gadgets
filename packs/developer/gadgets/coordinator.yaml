@@ -1,0 +1,32 @@
+schema_version: gadgets.framework/v0.1
+kind: Gadget
+metadata:
+  name: coordinator
+  version: 0.1.0
+  display_name: Coordinator Gadget
+  description: Decomposes user requests, proposes structured handoffs, and summarizes evidence without executing actions.
+runtime:
+  model_profile: mock_default
+  execution_mode: plan
+permission_level: plan
+capabilities:
+  - coordination.plan
+boundaries:
+  zones:
+    - local_repo
+tools:
+  allowed: []
+handoffs:
+  allowed_targets:
+    - filesystem.read
+    - patch.writer
+    - test.runner
+    - documentation.writer
+    - git.pr
+evidence:
+  required:
+    - summary
+    - handoffs_requested
+    - assumptions
+approval:
+  required_for: []

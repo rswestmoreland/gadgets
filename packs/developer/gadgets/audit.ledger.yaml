@@ -1,0 +1,39 @@
+schema_version: gadgets.framework/v0.1
+kind: Gadget
+metadata:
+  name: audit.ledger
+  version: 0.1.0
+  display_name: Audit Ledger Gadget
+  description: Records append-only audit events for Gadget runs, handoffs, actions, and evidence.
+runtime:
+  model_profile: mock_default
+  execution_mode: change
+permission_level: change
+capabilities:
+  - audit.write
+boundaries:
+  zones:
+    - local_repo
+  filesystem:
+    roots:
+      - "."
+    writable: true
+    writable_paths:
+      - ".gadgets/ledger/"
+    denied_paths:
+      - ".env"
+      - "secrets/"
+      - "**/*.pem"
+      - "**/*.key"
+tools:
+  allowed:
+    - audit.append
+    - audit.verify
+handoffs:
+  allowed_targets: []
+evidence:
+  required:
+    - summary
+    - audit_events
+approval:
+  required_for: []

@@ -1,0 +1,10 @@
+[package]
+name = "gadgets-policy"
+version = "0.1.0"
+edition = "2021"
+description = "Built-in deterministic policy checks."
+license = "MIT OR Apache-2.0"
+authors = ["Richard S. Westmoreland <dev@rswestmore.land>"]
+
+[dependencies]
+gadgets-core = { path = "../gadgets-core" }
