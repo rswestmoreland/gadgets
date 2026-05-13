@@ -5,7 +5,7 @@
 //! merge, rebase, create PRs, run shell commands, call model providers, apply
 //! patches, or perform host/server administration.
 
-use crate::redaction::{sanitize_bytes, DEFAULT_CAPTURE_BYTES, RedactionConfig};
+use crate::redaction::{sanitize_bytes, RedactionConfig, DEFAULT_CAPTURE_BYTES};
 use gadgets_core::{ActionRequest, ActionTarget, CapabilityName, DecisionKind, GadgetManifest};
 use gadgets_evidence::{
     create_observe_bundle, default_runs_root, EvidenceError, EvidenceTextArtifact,
