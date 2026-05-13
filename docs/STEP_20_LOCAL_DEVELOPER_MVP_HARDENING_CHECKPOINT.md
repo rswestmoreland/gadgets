@@ -44,7 +44,7 @@ Step 20 does not add:
 - Path-length scan.
 - ZIP integrity check.
 
-Cargo, rustc, and rustfmt are unavailable in this environment, so Rust validation was not run here.
+Historical checkpoint note: Rust validation was not run at this step. Superseded by Step 22: full Rust validation passed at commit c5fbd78.
 
 ## External validation required
 
@@ -68,4 +68,4 @@ cargo build --release
 
 ## Recommended next step
 
-Run external Rust validation and fix only issues reported by `fmt`, `check`, `test`, `clippy`, and release build.
+Historical checkpoint note: Step 22 later completed this validation flow at commit c5fbd78.

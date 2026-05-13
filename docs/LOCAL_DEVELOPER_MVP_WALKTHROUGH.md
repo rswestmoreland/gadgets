@@ -4,7 +4,22 @@ Date: 2026-05-13
 
 This walkthrough describes the current local-only Developer Pack workflow.
 
+For a broader alpha guide with configuration examples, troubleshooting, evidence/audit explanation, and known limitations, see `docs/DEVELOPER_MVP_ALPHA.md`.
+
 It remains local-first by default. It does not push code, deploy software, administer Linux hosts, access databases, or call cloud APIs. Step 21 can create one GitHub pull request only when explicitly enabled in local config and tied to verified approval plus local PR-body evidence.
+
+## Validated baseline
+
+This walkthrough applies to the externally validated baseline:
+
+```text
+validated commit: c5fbd78
+cargo fmt --check: PASS
+cargo check: PASS
+cargo test: PASS
+cargo clippy --all-targets --all-features -- -D warnings: PASS
+cargo build --release: PASS
+```
 
 ## 1. Initialize local state
 
@@ -142,4 +157,4 @@ Remote PR creation is disabled by default. After generating PR body evidence, a 
 gadgets git pr create <approval-request-id> --body-run <pr-body-run-id> --head <branch> --base <branch>
 ```
 
-This requires `git.remote_pr.enabled: true`, GitHub repository settings, and the configured token environment variable. The head branch must already exist remotely because Gadgets does not push branches in this step.
+This requires `git.remote_pr.enabled: true`, GitHub repository settings, allowed base/head branch config, duplicate-open-PR policy, and the configured token environment variable when `git.remote_pr.dry_run: false`. Generated config keeps `dry_run: true`; dry-run writes evidence without reading the token or making the GitHub mutation call. The head branch must already exist remotely because Gadgets does not push branches in this step.

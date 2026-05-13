@@ -164,17 +164,26 @@ approval:
 test_commands: []
 
 git:
-  # Remote PR creation is disabled by default. When enabled, Gadgets creates
-  # one GitHub pull request from verified approval and local PR-body evidence.
-  # It does not push branches; the head branch must already exist remotely.
+  # Remote PR creation is disabled by default. Dry run is enabled by default
+  # even after remote_pr.enabled is set to true. To create a GitHub PR, set
+  # enabled: true and dry_run: false after review. Gadgets still never pushes
+  # branches; the head branch must already exist remotely.
   remote_pr:
     enabled: false
+    dry_run: true
     provider: github
     owner: ""
     repo: ""
     api_base: https://api.github.com
     token_env: GITHUB_TOKEN
     default_base_branch: main
+    allowed_base_branches:
+      - main
+    allowed_head_prefixes:
+      - feature/
+      - fix/
+      - docs/
+    duplicate_strategy: fail
 
   protected_branches:
     - main

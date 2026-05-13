@@ -87,9 +87,9 @@ This reduces the chance of partial writes from a later hunk mismatch.
 
 These are known and should be carried into the next session.
 
-### Rust toolchain validation still needed
+### Historical validation note superseded by Step 22
 
-Cargo/Rust is not available in this sandbox. The project needs external validation:
+Cargo/Rust is not available in this sandbox. The project later completed external validation at Step 22 commit c5fbd78. Original requested commands were:
 
 ```bash
 cargo fmt --check

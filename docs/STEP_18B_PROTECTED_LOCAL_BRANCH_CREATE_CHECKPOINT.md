@@ -49,7 +49,7 @@ Performed in this environment:
 - stale wording scan for current Step 18b scope: passed
 - ZIP integrity check: passed at final package step
 
-Not performed in this environment because Cargo/rustc/rustfmt are unavailable:
+Historical checkpoint note: validation was not performed at this step because Cargo/rustc/rustfmt were unavailable. Superseded by Step 22: full Rust validation passed at commit c5fbd78. Original commands were:
 
 ```bash
 cargo fmt --check

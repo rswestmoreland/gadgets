@@ -73,4 +73,32 @@ Change Pack must not introduce a generic root-shell Gadget.
 
 ## Trust model
 
-Pack signing, registry trust, and external pack supply-chain controls are deferred.
+The pack trust/signing design is defined in `specs/PACK_TRUST_SIGNING_SPEC.md`.
+
+Trust model summary:
+
+- Pack trust is eligibility to load/use a pack, not runtime action authority.
+- Built-in runtime packs are trusted by the runtime distribution.
+- Project-local unsigned packs may be allowed in Safe mode only with explicit local configuration and audit warning in the future implementation.
+- Team mode should require signed non-built-in packs unless an explicit team policy exception exists.
+- Production mode should fail closed for unsigned, unknown, expired, mismatched, or invalid packs.
+- A signed pack still cannot bypass policy, capabilities, tool allowlists, zones, approvals, evidence, or audit.
+
+Step 26 is design-only. Step 27 adds non-enforcing `gadgets pack trust check [--project <path>] <pack>` diagnostics. Step 28 adds non-enforcing `gadgets pack trust roots [--project <path>]` diagnostics. Step 34 adds diagnostic-only Ed25519 signature verification. Step 35 makes policy preview consume those signature results. Signing tools, trust-root mutation, registry trust, pack install/update behavior, and Team/Production enforcement are not implemented yet.
+
+
+## Pack trust evidence and audit contract
+
+Step 29 defines the evidence and audit contract for pack trust. Step 30 emits diagnostic evidence and audit for `gadgets pack trust check` and `gadgets pack trust roots`. Step 31 emits diagnostic evidence and audit for `gadgets pack trust preview`, which previews Safe/Team/Production outcomes without enforcement. Step 35 adds signature-derived policy inputs to preview evidence. Later enforcement should reuse the same decision, identity hash, signature summary, trust-root summary, policy preview, and finding concepts without copying private keys or secret-bearing config into evidence.
+
+Pack trust remains non-enforcing. Diagnostics can verify signatures, but current runtime pack loading does not enforce signature decisions and does not add signing tools, trust-root mutation, pack install/update, or registry behavior.
+
+## Step 32 signature metadata diagnostics
+
+Pack trust diagnostics now include:
+
+```bash
+gadgets pack trust signature [--project <path>] <pack>
+```
+
+The command validates `pack.signature.yaml` metadata fields, local trust-root references, content manifest hashes, and Ed25519 signatures without enforcing signatures or changing pack loading behavior. Step 35 consumes these diagnostic results in `gadgets pack trust preview`.

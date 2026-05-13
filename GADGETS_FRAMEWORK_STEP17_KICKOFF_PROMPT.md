@@ -83,7 +83,7 @@ Maintain these guardrails:
 
 ## Important review findings to carry forward
 
-### Rust validation still needed
+### Historical validation note superseded by Step 22
 
 Cargo/Rust is not available in the ChatGPT sandbox. A Rust-enabled environment must run:
 

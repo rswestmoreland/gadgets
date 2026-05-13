@@ -61,7 +61,7 @@ Copyright 2026 Richard S. Westmoreland
 
 ## Rust validation
 
-Rust/Cargo validation was not run in this environment. Run externally:
+Historical checkpoint note: Rust/Cargo validation was not run at this step. Superseded by Step 22: full Rust validation passed at commit c5fbd78.
 
 ```bash
 cargo fmt --check

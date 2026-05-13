@@ -16,19 +16,26 @@ gadgets git pr create [--project <path>] <approval-request-id> --body-run <run-i
 
 ## Configuration gate
 
-Remote PR creation is disabled by default. A project must explicitly opt in with
-`.gadgets/config.yaml`:
+Remote PR creation is disabled by default. Generated config also keeps dry-run mode enabled by default. A project must explicitly opt in with `.gadgets/config.yaml`:
 
 ```yaml
 git:
   remote_pr:
     enabled: true
+    dry_run: true
     provider: github
     owner: example-owner
     repo: example-repo
     api_base: https://api.github.com
     token_env: GITHUB_TOKEN
     default_base_branch: main
+    allowed_base_branches:
+      - main
+    allowed_head_prefixes:
+      - feature/
+      - fix/
+      - docs/
+    duplicate_strategy: fail
 ```
 
 Only `provider: github` is implemented in this checkpoint. The token value is
@@ -40,9 +47,13 @@ evidence.
 The remote PR provider requires all of the following before making the API call:
 
 - `git.remote_pr.enabled: true`
+- reviewed `git.remote_pr.dry_run` setting
 - configured GitHub owner and repo
-- configured token environment variable
+- configured token environment variable when `dry_run: false`
 - valid head and base branch names
+- base branch allowed by `allowed_base_branches`
+- head branch allowed by `allowed_head_prefixes`
+- duplicate-open-PR behavior handled by `duplicate_strategy`
 - head and base branch must differ
 - verified patch approval request
 - approved approval record

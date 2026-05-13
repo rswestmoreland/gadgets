@@ -59,9 +59,9 @@ Static packaging checks were run in the chat environment:
 - path-length scan
 - stale wording scan for Step 18c scope
 
-Cargo, rustc, and rustfmt were not available in the chat environment, so Rust validation was not run here.
+Historical checkpoint note: Rust validation was not run at this step. Superseded by Step 22: full Rust validation passed at commit c5fbd78.
 
-External validation still required:
+Historical checkpoint note: superseded by Step 22 validation passed at commit c5fbd78. Original validation commands were:
 
 ```bash
 cargo fmt --check

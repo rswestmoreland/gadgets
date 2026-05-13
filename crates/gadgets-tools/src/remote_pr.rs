@@ -6,6 +6,7 @@
 //! fetch, merge, rebase, checkout, switch, run shell commands, call model
 //! providers, run tests, apply patches, or perform host/server administration.
 
+use crate::redaction::{sanitize_text, RedactionConfig};
 use gadgets_approval::{
     read_approval, read_request, verify_approval, ApprovalError, ApprovalRequestRecord,
 };
@@ -49,6 +50,7 @@ pub enum GitRemotePrError {
     InvalidRunId(String),
     InvalidTitle(String),
     InvalidBranch(String),
+    DuplicatePullRequest(String),
     MissingPrBody(String),
     MissingTokenEnv(String),
     Http(String),
@@ -73,6 +75,7 @@ impl fmt::Display for GitRemotePrError {
             Self::InvalidRunId(value) => write!(f, "invalid PR body run id: {value}"),
             Self::InvalidTitle(reason) => write!(f, "invalid remote PR title: {reason}"),
             Self::InvalidBranch(reason) => write!(f, "invalid remote PR branch: {reason}"),
+            Self::DuplicatePullRequest(reason) => write!(f, "duplicate remote PR rejected: {reason}"),
             Self::MissingPrBody(run_id) => write!(
                 f,
                 "PR body evidence is missing required artifacts for run {run_id}"
@@ -115,24 +118,36 @@ impl From<EvidenceError> for GitRemotePrError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemotePrProviderConfig {
     pub enabled: bool,
+    pub dry_run: bool,
     pub provider: String,
     pub owner: String,
     pub repo: String,
     pub api_base: String,
     pub token_env: String,
     pub default_base_branch: String,
+    pub allowed_base_branches: Vec<String>,
+    pub allowed_head_prefixes: Vec<String>,
+    pub duplicate_strategy: String,
 }
 
 impl RemotePrProviderConfig {
     pub fn github_disabled() -> Self {
         Self {
             enabled: false,
+            dry_run: true,
             provider: "github".to_string(),
             owner: String::new(),
             repo: String::new(),
             api_base: DEFAULT_GITHUB_API_BASE.to_string(),
             token_env: "GITHUB_TOKEN".to_string(),
             default_base_branch: "main".to_string(),
+            allowed_base_branches: vec!["main".to_string()],
+            allowed_head_prefixes: vec![
+                "feature/".to_string(),
+                "fix/".to_string(),
+                "docs/".to_string(),
+            ],
+            duplicate_strategy: "fail".to_string(),
         }
     }
 }
@@ -199,6 +214,8 @@ pub struct GitRemotePrReport {
     pub pr_number: Option<u64>,
     pub pr_url: Option<String>,
     pub passed: bool,
+    pub dry_run: bool,
+    pub duplicate_found: bool,
     pub http_status: Option<u16>,
     pub duration_ms: u128,
     pub evidence_bundle_path: PathBuf,
@@ -221,6 +238,8 @@ struct PrBodyEvidence {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RemotePrCapture {
     passed: bool,
+    dry_run: bool,
+    duplicate_found: bool,
     http_status: Option<u16>,
     response_text: String,
     pr_number: Option<u64>,
@@ -243,6 +262,7 @@ pub fn run_git_remote_pr_create(
     validate_run_id(&request.pr_body_run_id)?;
     validate_branch(&request.head_branch, "head")?;
     validate_branch(&request.base_branch, "base")?;
+    validate_branch_rules(&request)?;
     validate_optional_title(request.title_override.as_deref())?;
     if request.head_branch == request.base_branch {
         return Err(GitRemotePrError::InvalidBranch(
@@ -376,18 +396,36 @@ pub fn run_git_remote_pr_create(
         &gadget.metadata.name,
         Some(("repo", repo_target.as_str())),
         "allowed",
-        "Fixed GitHub API pull request creation started. No Git push, fetch, pull, merge, rebase, shell, provider, or admin command will run.",
+        if request.config.dry_run {
+            "Remote PR dry run started. No GitHub API mutation will run."
+        } else {
+            "Fixed GitHub API pull request creation started after duplicate-open-PR check. No Git push, fetch, pull, merge, rebase, shell, provider, or admin command will run."
+        },
     )?;
 
-    let token = read_token(&request.config.token_env)?;
-    let capture = create_github_pr(&request, &title, &pr_body.body, &token)?;
+    let capture = if request.config.dry_run {
+        create_dry_run_capture(&request, &title)
+    } else {
+        let token = read_token(&request.config.token_env)?;
+        if let Some(existing) = find_existing_github_pr(&request, &token)? {
+            duplicate_pr_capture(&request, existing)
+        } else {
+            create_github_pr(&request, &title, &pr_body.body, &token)?
+        }
+    };
 
     append_audit(
         &ledger_path,
         &request,
         &mut state,
         if capture.passed {
-            "git.pr.create.completed"
+            if capture.dry_run {
+                "git.pr.create.dry_run_completed"
+            } else if capture.duplicate_found {
+                "git.pr.create.duplicate_reused"
+            } else {
+                "git.pr.create.completed"
+            }
         } else {
             "git.pr.create.failed"
         },
@@ -395,7 +433,13 @@ pub fn run_git_remote_pr_create(
         &gadget.metadata.name,
         Some(("repo", repo_target.as_str())),
         if capture.passed { "allowed" } else { "failed" },
-        if capture.passed {
+        if capture.dry_run {
+            "Remote pull request dry run completed without GitHub API mutation."
+        } else if capture.duplicate_found && capture.passed {
+            "Existing open remote pull request was reused according to duplicate strategy."
+        } else if capture.duplicate_found {
+            "Existing open remote pull request was found and rejected according to duplicate strategy."
+        } else if capture.passed {
             "Remote pull request creation completed through configured GitHub API endpoint."
         } else {
             "Remote pull request creation returned an unsuccessful HTTP response."
@@ -502,6 +546,8 @@ pub fn run_git_remote_pr_create(
         pr_number: capture.pr_number,
         pr_url: capture.pr_url,
         passed: capture.passed,
+        dry_run: capture.dry_run,
+        duplicate_found: capture.duplicate_found,
         http_status: capture.http_status,
         duration_ms: capture.duration_ms,
         evidence_bundle_path: evidence_report.bundle_path,
@@ -534,6 +580,79 @@ fn validate_config(config: &RemotePrProviderConfig) -> Result<(), GitRemotePrErr
         ));
     }
     validate_branch(&config.default_base_branch, "default_base_branch")?;
+    if !config
+        .allowed_base_branches
+        .iter()
+        .any(|branch| branch == &config.default_base_branch)
+    {
+        return Err(GitRemotePrError::InvalidConfig(
+            "default_base_branch must be present in allowed_base_branches".to_string(),
+        ));
+    }
+    if config.allowed_base_branches.is_empty() {
+        return Err(GitRemotePrError::InvalidConfig(
+            "allowed_base_branches must not be empty".to_string(),
+        ));
+    }
+    if config.allowed_head_prefixes.is_empty() {
+        return Err(GitRemotePrError::InvalidConfig(
+            "allowed_head_prefixes must not be empty".to_string(),
+        ));
+    }
+    for branch in &config.allowed_base_branches {
+        validate_branch(branch, "allowed_base_branch")?;
+    }
+    for prefix in &config.allowed_head_prefixes {
+        validate_head_prefix(prefix)?;
+    }
+    if config.duplicate_strategy != "fail" && config.duplicate_strategy != "reuse" {
+        return Err(GitRemotePrError::InvalidConfig(
+            "duplicate_strategy must be fail or reuse".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_branch_rules(request: &GitRemotePrRequest) -> Result<(), GitRemotePrError> {
+    if !request
+        .config
+        .allowed_base_branches
+        .iter()
+        .any(|branch| branch == &request.base_branch)
+    {
+        return Err(GitRemotePrError::InvalidBranch(format!(
+            "base branch {} is not in remote_pr.allowed_base_branches",
+            request.base_branch
+        )));
+    }
+    if !request
+        .config
+        .allowed_head_prefixes
+        .iter()
+        .any(|prefix| request.head_branch.starts_with(prefix))
+    {
+        return Err(GitRemotePrError::InvalidBranch(format!(
+            "head branch {} does not match remote_pr.allowed_head_prefixes",
+            request.head_branch
+        )));
+    }
+    Ok(())
+}
+
+fn validate_head_prefix(value: &str) -> Result<(), GitRemotePrError> {
+    if !value.ends_with('/')
+        || value.len() <= 1
+        || value.starts_with('/')
+        || value.contains("//")
+        || value
+            .trim_end_matches('/')
+            .split('/')
+            .any(|part| validate_branch(part, "head_prefix").is_err())
+    {
+        return Err(GitRemotePrError::InvalidConfig(format!(
+            "invalid allowed head prefix: {value}"
+        )));
+    }
     Ok(())
 }
 
@@ -685,6 +804,126 @@ fn read_token(env_name: &str) -> Result<String, GitRemotePrError> {
     Ok(value)
 }
 
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExistingPullRequest {
+    number: Option<u64>,
+    url: Option<String>,
+}
+
+fn create_dry_run_capture(request: &GitRemotePrRequest, title: &str) -> RemotePrCapture {
+    RemotePrCapture {
+        passed: true,
+        dry_run: true,
+        duplicate_found: false,
+        http_status: None,
+        response_text: format!(
+            "dry_run=true\nprovider=github\nrepository={}/{}\nhead_branch={}\nbase_branch={}\ntitle={}\nmutation=false\n",
+            request.config.owner, request.config.repo, request.head_branch, request.base_branch, title
+        ),
+        pr_number: None,
+        pr_url: None,
+        duration_ms: 0,
+    }
+}
+
+fn duplicate_pr_capture(
+    request: &GitRemotePrRequest,
+    existing: ExistingPullRequest,
+) -> Result<RemotePrCapture, GitRemotePrError> {
+    let response_text = format!(
+        "duplicate_found=true\nduplicate_strategy={}\nexisting_pr_number={}\nexisting_pr_url={}\n",
+        request.config.duplicate_strategy,
+        existing
+            .number
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "none".to_string()),
+        existing.url.as_deref().unwrap_or("none")
+    );
+    if request.config.duplicate_strategy == "reuse" {
+        Ok(RemotePrCapture {
+            passed: true,
+            dry_run: false,
+            duplicate_found: true,
+            http_status: Some(200),
+            response_text,
+            pr_number: existing.number,
+            pr_url: existing.url,
+            duration_ms: 0,
+        })
+    } else {
+        Ok(RemotePrCapture {
+            passed: false,
+            dry_run: false,
+            duplicate_found: true,
+            http_status: Some(200),
+            response_text,
+            pr_number: existing.number,
+            pr_url: existing.url,
+            duration_ms: 0,
+        })
+    }
+}
+
+fn find_existing_github_pr(
+    request: &GitRemotePrRequest,
+    token: &str,
+) -> Result<Option<ExistingPullRequest>, GitRemotePrError> {
+    let url = format!(
+        "{}/repos/{}/{}/pulls?state=open&head={}:{}&base={}",
+        request.config.api_base,
+        request.config.owner,
+        request.config.repo,
+        request.config.owner,
+        request.head_branch,
+        request.base_branch
+    );
+    let auth_header = format!("Bearer {token}");
+    let response = ureq::get(&url)
+        .set("Accept", "application/vnd.github+json")
+        .set("Authorization", &auth_header)
+        .set("User-Agent", "gadgets-framework/0.1")
+        .set("X-GitHub-Api-Version", "2022-11-28")
+        .call();
+
+    match response {
+        Ok(resp) => {
+            let text = resp
+                .into_string()
+                .map_err(|err| GitRemotePrError::Http(err.to_string()))?;
+            let parsed: Value = serde_json::from_str(&text)
+                .map_err(|err| GitRemotePrError::InvalidResponse(err.to_string()))?;
+            let Some(items) = parsed.as_array() else {
+                return Err(GitRemotePrError::InvalidResponse(
+                    "duplicate PR lookup response was not an array".to_string(),
+                ));
+            };
+            let Some(first) = items.first() else {
+                return Ok(None);
+            };
+            Ok(Some(ExistingPullRequest {
+                number: first.get("number").and_then(|item| item.as_u64()),
+                url: first
+                    .get("html_url")
+                    .and_then(|item| item.as_str())
+                    .map(|item| item.to_string()),
+            }))
+        }
+        Err(ureq::Error::Status(status, resp)) => {
+            let text = resp
+                .into_string()
+                .unwrap_or_else(|_| "<failed to read response body>".to_string());
+            Err(GitRemotePrError::Http(format!(
+                "duplicate PR lookup failed with HTTP {status}: {}",
+                sanitize_response(&text)
+            )))
+        }
+        Err(err) => Err(GitRemotePrError::Http(format!(
+            "duplicate PR lookup failed: {err}"
+        ))),
+    }
+}
+
 fn create_github_pr(
     request: &GitRemotePrRequest,
     title: &str,
@@ -733,6 +972,8 @@ fn create_github_pr(
                 .map(|item| item.to_string());
             Ok(RemotePrCapture {
                 passed: (200..300).contains(&status),
+                dry_run: false,
+                duplicate_found: false,
                 http_status: Some(status),
                 response_text: text,
                 pr_number,
@@ -746,6 +987,8 @@ fn create_github_pr(
                 .unwrap_or_else(|_| "<failed to read response body>".to_string());
             Ok(RemotePrCapture {
                 passed: false,
+                dry_run: false,
+                duplicate_found: false,
                 http_status: Some(status),
                 response_text: text,
                 pr_number: None,
@@ -828,8 +1071,11 @@ fn build_summary(request: &GitRemotePrRequest, title: &str, capture: &RemotePrCa
 fn build_assumptions() -> Vec<String> {
     vec![
         "Remote PR creation must be explicitly enabled in .gadgets/config.yaml.".to_string(),
-        "The approval request and approval record were verified before the remote API call.".to_string(),
+        "Dry-run mode performs all local verification but does not call the GitHub mutation endpoint.".to_string(),
+        "The approval request and approval record were verified before any remote API mutation.".to_string(),
         "The PR body came from a completed local PR body evidence bundle.".to_string(),
+        "The base branch and head branch were checked against configured allowlists.".to_string(),
+        "Duplicate-open-PR handling follows remote_pr.duplicate_strategy.".to_string(),
         "The head branch is assumed to already exist on the remote repository; this provider does not push branches.".to_string(),
         "No provider SDK tool call, shell command, Git push, fetch, pull, merge, rebase, checkout, test command, or admin action was attempted.".to_string(),
         "The remote provider response was redacted before evidence write.".to_string(),
@@ -915,27 +1161,15 @@ fn display_http_status(status: Option<u16>) -> String {
 }
 
 fn sanitize_response(input: &str) -> String {
-    let mut out = String::new();
-    for line in input.lines().take(400) {
-        let lower = line.to_ascii_lowercase();
-        if lower.contains("token")
-            || lower.contains("secret")
-            || lower.contains("authorization")
-            || lower.contains("password")
-            || lower.contains("credential")
-        {
-            out.push_str("<redacted secret-like response line>\n");
-        } else {
-            out.push_str(line);
-            out.push('\n');
-        }
-        if out.len() >= MAX_BODY_BYTES {
-            out.truncate(MAX_BODY_BYTES);
-            out.push_str("\n<truncated>\n");
-            break;
-        }
-    }
-    out
+    let limited = input.lines().take(400).collect::<Vec<_>>().join("\n");
+    sanitize_text(
+        &limited,
+        RedactionConfig {
+            max_bytes: MAX_BODY_BYTES,
+            redacted_line: "<redacted secret-like response line>",
+            truncated_notice: "\n<truncated>\n",
+        },
+    )
 }
 
 fn decision_kind_as_str(kind: &DecisionKind) -> &'static str {

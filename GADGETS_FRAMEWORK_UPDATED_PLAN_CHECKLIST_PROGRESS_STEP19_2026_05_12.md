@@ -58,7 +58,7 @@ gadgets git pr body [--project <path>] <approval-request-id> [--test-run <run-id
 
 ## Remaining local Developer MVP work
 
-- [ ] external Rust validation and fixes
+- [x] Historical item superseded: external Rust validation and bounded fixes completed at Step 22 commit c5fbd78
 - [ ] approval expiry format and enforcement
 - [ ] better guided configuration
 - [ ] better onboarding examples
@@ -78,4 +78,4 @@ gadgets git pr body [--project <path>] <approval-request-id> [--test-run <run-id
 
 ## Recommended next step
 
-Run external Rust validation. If validation is clean or after bounded fixes, proceed to remote PR creation design only. Remote PR creation must stay disabled by default and require explicit configuration.
+Historical note: external Rust validation and bounded fixes later passed at Step 22 commit c5fbd78. Guarded remote PR creation was implemented disabled by default behind explicit configuration.

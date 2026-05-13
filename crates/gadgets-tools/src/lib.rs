@@ -12,6 +12,7 @@ pub mod patch_apply;
 pub mod patch_plan;
 mod pr_body;
 mod remote_pr;
+mod redaction;
 
 pub use filesystem_read::{
     run_filesystem_read, FilesystemReadError, FilesystemReadReport, FilesystemReadRequest,

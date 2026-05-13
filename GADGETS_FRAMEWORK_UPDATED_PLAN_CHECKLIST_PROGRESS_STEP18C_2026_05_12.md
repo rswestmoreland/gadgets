@@ -12,7 +12,7 @@ More useful breakdown:
 - Local Developer MVP: 90-92% complete.
 - Full multi-pack roadmap: 35-40% complete.
 
-The Local Developer MVP moved forward because Step 18 now includes local Git status, protected local branch creation, and approved local commit scaffolding. Remaining local Developer MVP work is mainly PR body generation, optional PR creation behind explicit configuration, and external Rust validation/hardening.
+The Local Developer MVP moved forward because Step 18 now includes local Git status, protected local branch creation, and approved local commit scaffolding. Historical note: PR body generation, guarded remote PR creation, and external Rust validation were later completed through Step 22. Remaining work is alpha packaging and polish.
 
 ## Completed milestones
 

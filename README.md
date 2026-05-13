@@ -12,11 +12,49 @@ Only the Gadgets runtime may authorize and execute actions.
 
 Provider SDK behavior, prompts, model tool-calling, and agent handoff features are useful integration surfaces, but they are not the final security boundary.
 
+## Current source and validation status
+
+Current source checkpoint:
+
+```text
+Step 35 - pack trust policy preview with signature results
+validation status: external Rust validation pending after post-Step-22 source changes
+```
+
+Last externally validated baseline:
+
+```text
+gadgets-main.zip
+validated commit: c5fbd78
+validation date: 2026-05-13
+```
+
+External Rust validation passed end-to-end on the last validated baseline:
+
+```text
+cargo fmt --check                                      PASS
+cargo check                                           PASS
+cargo test                                            PASS
+cargo clippy --all-targets --all-features -- -D warnings  PASS
+cargo build --release                                 PASS
+```
+
+Validation environment reported by Codex:
+
+```text
+rustc 1.89.0 (29483883e 2025-08-04)
+cargo 1.89.0 (c24e10642 2025-06-23)
+```
+
 ## Initial product shape
 
 The first implementation is a CLI-first local runtime focused on safe developer automation.
 
-The current executable local workflow starts with observe-only repository inspection and supports plan-only patch proposals, scoped approvals with enforced expiration, approved local patch application, explicit allowlisted test runs, local Git status, protected local branch creation, approved local commits, and local PR body generation:
+The current Developer Pack workflow can inspect a repository, propose a patch, create and approve a scoped patch approval record, apply the exact approved patch when policy and hash checks pass, run a named configured test command, record local Git status evidence, create a validated non-protected local branch, create one local commit from approved patch files on a non-protected branch, generate a reviewable local PR body Markdown artifact, and optionally create one GitHub pull request when remote PR creation is explicitly enabled in config.
+
+For a single alpha-oriented guide, see `docs/DEVELOPER_MVP_ALPHA.md`. It explains what the MVP can do today, what it intentionally cannot do, safe configuration examples, the command walkthrough, troubleshooting, evidence, audit, and known limitations.
+
+Expected local flow:
 
 ```bash
 gadgets ask "Review this repo and explain how it is structured."
@@ -31,64 +69,59 @@ gadgets git commit approved-patch <approval-request-id>
 gadgets git pr body <approval-request-id>
 ```
 
-Expected observe behavior:
+Optional guarded remote PR creation:
 
-1. `gadgets ask` loads `.gadgets/config.yaml`.
-2. The configured model provider profile is selected.
-3. The provider returns a structured Coordinator handoff request.
-4. The runtime validates the handoff against installed packs and loaded Gadget manifests.
-5. The Filesystem Read Gadget inspects allowed repository paths.
-6. Policy denies secret and protected paths.
-7. Evidence bundle is produced.
-8. Audit ledger records run, provider response, handoff, actions, denied accesses, and evidence.
-9. No files are modified and no commands are executed.
+```bash
+gadgets git pr create <approval-request-id> --body-run <pr-body-run-id> --head <branch> --base <branch>
+```
 
-Expected patch behavior:
+Remote PR creation is disabled by default. It requires explicit config, a verified and unexpired approval, local PR body evidence, configured base/head branch constraints, duplicate-open-PR handling, deterministic policy approval, and a configured GitHub token environment variable when dry-run mode is disabled. It does not push branches; the head branch must already exist remotely. Dry-run mode is enabled by default in generated config.
 
-1. Patch Writer creates a plan-only `proposed.patch` evidence artifact.
-2. Approval records bind to the exact `proposed.patch` SHA-256, deterministic scope hash, and optional strict UTC expiration.
-3. `gadgets patch apply` verifies the approval request, approval record, expiration, scope hash, patch hash, patch format, policy, writable paths, and denied paths.
-4. Patch application prepares all target file changes before writing any file.
-5. Patch application writes its own evidence bundle and audit events.
-6. Patch application does not run tests, Git commands, PR behavior, shell commands, Linux admin actions, database actions, cloud actions, or deployment actions.
+## Safety boundaries
 
-## Implemented provider profiles
+Implemented boundaries:
 
-The mock provider remains the default.
+- Provider output is treated as an untrusted structured request.
+- Runtime policy remains the action authority.
+- Evidence and audit are required for meaningful work.
+- Patch application does not run tests, Git commands, PR behavior, shell commands, Linux admin actions, database actions, cloud actions, or deployment actions.
+- Test running accepts only named commands from `.gadgets/config.yaml`.
+- Test commands run through `std::process::Command` without `sh -c`.
+- Git status uses one fixed observe command.
+- Local branch creation uses one fixed branch command after branch-name validation and protected-branch checks.
+- Local commit creation requires verified approval scope and stages only approved patch files.
+- Local PR body generation writes reviewable Markdown evidence.
+- Remote PR creation is GitHub-only, disabled by default, config-gated, dry-run by default, branch-constrained, and duplicate-aware.
+- Evidence output redaction is centralized and best-effort for stdout, stderr, Git output, PR body text, and remote API responses.
 
-Optional live providers now available behind the same `ModelProvider` trait:
+Still intentionally not implemented:
 
-- `openai`
-- `anthropic`
+- arbitrary shell execution
+- generic root-shell Gadget
+- provider-side tool execution bypass
+- Git push, fetch, pull, merge, or rebase
+- Git checkout or switch
+- remote branch creation
+- Linux server administration actions
+- database, cloud, or deployment behavior
+- full secret scanner or DLP model; current redaction is best-effort only
+- pack trust enforcement and signing tools; Steps 26-35 define design, inspection, trust-root diagnostics, diagnostic evidence/audit emission, policy preview, signature metadata diagnostics, byte-level verification design, non-enforcing Ed25519 signature diagnostics, and signature-aware policy preview only
 
-Provider output is always treated as an untrusted structured request. It cannot bypass Gadget manifests, pack validation, policy checks, evidence generation, or audit logging.
 
-## Locked Phase 0 direction
+## Pack trust status
 
-- Rust core runtime.
-- CLI-first MVP.
-- Provider-neutral model adapters.
-- Mock provider default.
-- OpenAI provider opt-in.
-- Anthropic provider opt-in.
-- Runtime policy remains the authority after provider handoffs.
-- YAML manifests/config.
-- JSONL audit/event streams.
-- Built-in deterministic policy checks first.
-- Safe Mode default.
-- Developer Pack first.
-- Linux Server Admin Observe Pack before Change Pack.
-- No generic root-shell Gadget.
-- Approval required for file writes in v0.1; approval expiration is enforced when present; Step 18b permits only validated non-protected local branch ref creation, Step 18c permits approved local commits scoped to verified patch approvals, and Step 19 generates local PR Markdown evidence only.
-- Evidence and audit required for meaningful work.
-- No arbitrary shell in the MVP.
-- Allowlisted test commands are implemented through `gadgets test run` using named configured commands only.
-- Local Git status is implemented through `gadgets git status` using one fixed runtime-selected observe command.
-- Protected local branch creation is implemented through `gadgets git branch create` using one fixed runtime-selected local branch command.
-- Approved local commit creation is implemented through `gadgets git commit approved-patch` using verified patch approval scope and fixed Git commands.
-- Local PR body generation is implemented through `gadgets git pr body` using verified approval and optional evidence references.
-- Approval records can be created for plan-only patch artifacts.
-- Approved local patch application is implemented through `gadgets patch apply`, with exact approval scope/hash verification before any file write.
+Pack trust is being added in staged, non-enforcing steps.
+
+Implemented diagnostics:
+
+```bash
+gadgets pack trust check [--project <path>] <pack>
+gadgets pack trust roots [--project <path>]
+gadgets pack trust preview [--project <path>] [--mode safe|team|production] <pack>
+gadgets pack trust signature [--project <path>] <pack>
+```
+
+Current boundary: these commands report trust metadata, trust-root diagnostics, future policy outcomes, and signature verification diagnostics. They write diagnostic evidence bundles and append audit events. `gadgets pack trust signature` performs Ed25519 verification when signed pack metadata and matching trust-root public keys are available. None of the pack trust commands enforce signed-pack requirements, edit trust roots, install packs, download packs, or execute Gadgets. Trust enforcement remains unimplemented.
 
 ## License and author
 
@@ -106,7 +139,7 @@ Copyright 2026 Richard S. Westmoreland
 
 ```text
 docs/       Architecture, decisions, implementation plan, roadmap.
-specs/      Contract specs for manifests, capabilities, zones, handoffs, evidence, audit, providers, and packs.
+specs/      Contract specs for manifests, capabilities, zones, handoffs, evidence, audit, providers, packs, and pack trust/signing.
 crates/     Rust workspace crates.
 packs/      Built-in Gadget pack manifests and Gadget manifests.
 examples/   Example projects and local `.gadgets/` configuration.
@@ -125,7 +158,11 @@ gadgets evidence create-observe <run-id> <gadget> <summary>
 gadgets pack list [--project <path>]
 gadgets pack show [--project <path>] <pack>
 gadgets pack validate [--project <path>] [--strict] [pack]
-gadgets approval request-patch [--project <path>] <run-id> [--expires-at <RFC3339-UTC>]
+gadgets pack trust check [--project <path>] <pack>
+gadgets pack trust roots [--project <path>]
+gadgets pack trust preview [--project <path>] [--mode safe|team|production] <pack>
+gadgets pack trust signature [--project <path>] <pack>
+gadgets approval request-patch [--project <path>] <run-id> [--expires-at <YYYY-MM-DDTHH:MM:SSZ>]
 gadgets approval approve [--project <path>] <approval-request-id> <approver>
 gadgets approval show [--project <path>] <approval-request-id>
 gadgets approval verify [--project <path>] <approval-request-id>
@@ -141,124 +178,197 @@ gadgets git pr create [--project <path>] <approval-request-id> --body-run <run-i
 
 ## Allowlisted test command workflow
 
-Step 17 implements an allowlisted Test Runner:
-
-```bash
-gadgets test run [--project <path>] <test-command-name>
-```
-
 The Test Runner runs only named test commands configured in `.gadgets/config.yaml`. It does not accept arbitrary command strings from a model response or from free-form user input. It launches commands directly without `sh -c`, checks `test.run` through deterministic policy, captures stdout/stderr/exit status/duration, writes evidence, and appends audit events.
 
-## Current status
+Example config:
 
-Step 21 adds guarded remote PR creation after Step 20 local Developer MVP hardening. The current Developer Pack workflow can inspect a repo, propose a patch, create and approve a scoped patch approval record, apply the exact approved patch when policy and hash checks pass, run a named configured test command, record local Git status evidence, create a validated non-protected local branch, create one local commit from approved patch files on a non-protected branch, generate a reviewable local PR body Markdown artifact, and optionally create one GitHub pull request when remote PR creation is explicitly enabled in config.
+```yaml
+test_commands:
+  - name: cargo_test
+    command: cargo test
+    working_dir: "."
+    timeout_seconds: 300
+```
 
-Still not implemented:
+Run by name:
 
-- external Rust validation in this environment
-- arbitrary shell execution
-- Linux server administration actions
-- database/cloud/deployment behavior
-- rollback execution
-- remote Git behavior such as push, pull, fetch, merge, or rebase
-
+```bash
+gadgets test run cargo_test
+```
 
 ## Local Git workflow
 
-Step 18a implements observe-only local Git status:
+Git status:
 
 ```bash
 gadgets git status [--project <path>]
 ```
 
-The Git status provider runs only one fixed command selected by the runtime: `git status --short --branch --untracked-files=normal`. It launches the command directly without `sh -c`, checks `git.status` through deterministic policy, captures stdout/stderr/exit status/duration, writes evidence, and appends audit events.
+Runs only:
 
-Step 18b implements protected local branch creation:
+```text
+git status --short --branch --untracked-files=normal
+```
+
+Local branch creation:
 
 ```bash
 gadgets git branch create [--project <path>] <branch-name>
-gadgets git commit approved-patch [--project <path>] <approval-request-id> [--message <message>]
-gadgets git pr body [--project <path>] <approval-request-id> [--test-run <run-id>] [--commit-run <run-id>] [--title <title>]
-gadgets git pr create [--project <path>] <approval-request-id> --body-run <run-id> --head <branch> [--base <branch>] [--title <title>]
 ```
 
-The branch provider runs only one fixed command selected by the runtime: `git branch <validated-branch-name>`. The branch name is supplied as a single CLI argument, validated by the runtime, checked against `git.protected_branches` in `.gadgets/config.yaml`, and passed directly to `std::process::Command` without `sh -c`.
+Runs only:
 
-This does not checkout or switch branches, stage files, commit, push, pull, fetch, merge, rebase, create PRs, call providers, apply patches, run tests, or perform admin actions. Secret-like Git output lines are redacted before evidence write.
+```text
+git branch <validated-branch-name>
+```
 
-Step 18c implements approved local commit creation:
+Approved local commit:
 
 ```bash
 gadgets git commit approved-patch [--project <path>] <approval-request-id> [--message <message>]
-gadgets git pr body [--project <path>] <approval-request-id> [--test-run <run-id>] [--commit-run <run-id>] [--title <title>]
-gadgets git pr create [--project <path>] <approval-request-id> --body-run <run-id> --head <branch> [--base <branch>] [--title <title>]
 ```
 
-The commit provider verifies the approval request and approval record, verifies the exact patch artifact hash and scope hash, extracts the approved file list from `proposed.patch`, rejects detached HEAD and protected current branches, rejects preexisting staged changes, stages only files named by the approved patch, verifies the staged set, and creates one local commit. It uses `std::process::Command` without `sh -c`. If the commit fails after staging, it attempts a fixed best-effort `git reset -- <approved-files>` cleanup.
+The commit provider verifies approval, rejects detached HEAD and protected current branches, rejects preexisting staged changes, stages only approved patch files, verifies the staged set, and creates one local commit.
 
-This does not checkout or switch branches, push, pull, fetch, merge, rebase, create PRs, call providers, apply patches, run tests, or perform admin actions.
-
-Step 19 implements local PR body generation:
+Local PR body generation:
 
 ```bash
 gadgets git pr body [--project <path>] <approval-request-id> [--test-run <run-id>] [--commit-run <run-id>] [--title <title>]
-gadgets git pr create [--project <path>] <approval-request-id> --body-run <run-id> --head <branch> [--base <branch>] [--title <title>]
 ```
 
-The PR body generator verifies the approval request and approval record, summarizes the approved patch, optionally references prior test and commit evidence bundles, and writes `pr_body.md` as evidence. It does not create a remote PR, push, pull, fetch, merge, rebase, call providers, apply patches, run tests, execute shell, or perform admin actions. Step 21 adds the separate `gadgets git pr create` path for explicitly configured remote PR creation.
+This writes local Markdown evidence only.
 
-
-Step 21 implements guarded remote PR creation:
+Guarded remote PR creation:
 
 ```bash
 gadgets git pr create [--project <path>] <approval-request-id> --body-run <run-id> --head <branch> [--base <branch>] [--title <title>]
 ```
 
-Remote PR creation is disabled by default. To enable it, `.gadgets/config.yaml` must set `git.remote_pr.enabled: true` and configure `provider: github`, `owner`, `repo`, `api_base`, `token_env`, and `default_base_branch`. The provider verifies the approval request, approval record, approval expiration, local PR body evidence run, deterministic policy, and configured remote PR settings before making one GitHub API call to create a pull request. It does not push branches; the head branch must already exist remotely. It does not run `git push`, `git fetch`, `git pull`, merge, rebase, checkout, switch, shell, provider tools, patch apply, tests, Linux admin, database, cloud, or deployment actions. The token value is loaded from the configured environment variable and is not written to evidence.
-
-## Current local patch workflow
-
-The current Developer Pack workflow can inspect a repo, produce a plan-only patch, create and approve a patch approval record with optional strict UTC expiration, and apply the exact approved patch through `gadgets patch apply`. Patch application verifies the approval record, expiration, scope hash, patch SHA-256, and writable path policy before writing files. It does not run shell commands, tests, Git, PR, Linux admin, database, cloud, or deployment actions.
-
-## Step 17 Test Runner boundary
-
-The Test Runner implementation is explicit and narrow:
-
-- `gadgets test run [--project <path>] <test-command-name>`
-- command string loaded only from `.gadgets/config.yaml`
-- unknown command names rejected
-- empty command names rejected
-- unsafe working directories rejected
-- parent traversal rejected
-- `test.run` policy checked before execution
-- command execution launched directly without `sh -c`
-- stdout/stderr/exit status/duration captured as evidence
-- audit events appended
-- no patch application inside the Test Runner
-- stdout/stderr are capped and secret-like output lines are redacted before evidence write
-- remote PR creation is disabled by default and requires explicit `git.remote_pr.enabled` config
-- no Linux admin, database, cloud, deployment, or production behavior
+This is disabled by default and currently supports a single GitHub PR creation API call. It does not push branches.
 
 ## Approval expiration
 
-Patch approval requests may include an expiration:
+Approval expiration uses strict UTC RFC3339 without fractional seconds:
 
-```bash
-gadgets approval request-patch <run-id> --expires-at 2999-01-01T00:00:00Z
+```text
+YYYY-MM-DDTHH:MM:SSZ
 ```
 
-The timestamp must use strict UTC RFC3339 without fractional seconds: `YYYY-MM-DDTHH:MM:SSZ`. Expiration is validated when the request is created, rejected if already expired when approval is recorded, and checked again by approval verification. Patch apply, approved local commit, and local PR body generation all rely on approval verification.
+Expiration is validated when the request is created, rejected if already expired when approval is recorded, and checked again by approval verification. Patch apply, approved local commit, local PR body generation, and guarded remote PR creation all rely on approval verification.
 
-See `docs/LOCAL_DEVELOPER_MVP_WALKTHROUGH.md` for the current local workflow.
+## Pack trust/signing status
 
-## External validation
+Step 26 defines the pack trust and signing model in `specs/PACK_TRUST_SIGNING_SPEC.md`.
 
-If the Rust toolchain is available, validate with:
+The design locks the future approach for:
+
+- pack identity
+- content manifests
+- detached signature records
+- local trust roots
+- Safe/Team/Production mode behavior
+- verification outcomes
+- audit and evidence expectations
+
+Step 27 adds a non-enforcing pack trust inspection scaffold:
 
 ```bash
-cargo fmt --check
-cargo check
-cargo test
-cargo clippy --all-targets --all-features -- -D warnings
-cargo build --release
+gadgets pack trust check [--project <path>] <pack>
 ```
+
+The command reports whether a pack is built-in or project-local, whether optional `pack.contents.yaml` and `pack.signature.yaml` metadata are present, basic hash cross-check findings when metadata exists, and whether local trust roots are present. It does not verify cryptographic signatures, enforce signed-pack requirements, mutate trust roots, install packs, download packs, or execute Gadgets.
+
+Step 28 adds a non-enforcing trust-root inspection scaffold:
+
+```bash
+gadgets pack trust roots [--project <path>]
+```
+
+The command reports whether `.gadgets/trust/trusted_publishers.yaml` exists, whether it parses, its version, configured publisher summaries, and diagnostic findings. It does not verify signatures, enforce trust, mutate trust roots, install packs, download packs, or execute Gadgets.
+
+Step 30 adds diagnostic evidence and audit emission for both commands. Each run writes a normal evidence bundle under `.gadgets/runs/<run-id>/evidence` and appends audit events to `.gadgets/ledger/events.jsonl`.
+
+Pack trust check evidence includes:
+
+- `pack_trust_decision.txt`
+- `pack_identity.yaml`
+- `pack_manifest_hash.txt`
+- `pack_contents_summary.txt`
+- `pack_signature_summary.yaml`
+- `trust_root_summary.txt`
+- `trust_findings.txt`
+- `policy_mode.txt`
+
+Trust-root inspection evidence includes:
+
+- `trust_root_path.txt`
+- `trust_root_summary.yaml`
+- `trusted_publishers_summary.txt`
+- `trust_root_findings.txt`
+
+Step 31 adds non-enforcing policy preview:
+
+```bash
+gadgets pack trust preview [--project <path>] [--mode safe|team|production] <pack>
+```
+
+The command reports how the pack would be treated under the selected mode. As of Step 35, it consumes the real signature diagnostic result from `gadgets pack trust signature`. Safe Mode preview allows local development packs with warnings when signatures are missing or invalid. Team and Production previews allow only valid trusted signatures diagnostically. The preview command is still non-enforcing and does not change pack loading. Preview evidence includes `pack_trust_policy_preview.txt`, `pack_identity.yaml`, `pack_manifest_hash.txt`, `pack_trust_decision.txt`, `signature_policy_inputs.txt`, `trust_findings.txt`, and `policy_mode.txt`.
+
+
+## Step 35 signature-aware policy preview
+
+Step 35 updates `gadgets pack trust preview` so Safe, Team, and Production previews consume the same signature metadata, content-manifest, trust-root, expiration, and Ed25519 verification results produced by `gadgets pack trust signature`.
+
+The preview remains diagnostic only. It does not enforce pack loading, mutate trust roots, install packs, download packs, execute Gadgets, or enable Team/Production gates.
+
+## Recommended next step
+
+Proceed with the next design or hardening checkpoint before enabling pack trust enforcement. External Rust validation should still be rerun before a release tag because Steps 24, 25, 27, 28, 30, 31, 32, 34, and 35 include Rust source changes after the last validated baseline.
+
+## Step 32 - Signature metadata diagnostics
+
+Step 32 adds a diagnostic-only signature metadata command:
+
+```bash
+gadgets pack trust signature [--project <path>] <pack>
+```
+
+The command checks `pack.signature.yaml` metadata shape, strict UTC timestamp format, pack identity/hash references, local trust-root publisher/key references, content manifest file hashes, and Ed25519 signatures when signed metadata and matching trust-root public keys are available. It writes evidence and audit events, but it does not enforce signatures, mutate trust roots, install packs, download packs, or execute Gadgets.
+
+## Step 33 cryptographic verification design
+
+Step 33 finalizes the design for real pack signature verification but does not add cryptographic verification code or enforcement.
+
+Locked version 1 choices:
+
+- Ed25519 signatures
+- SHA-256 hashes
+- lowercase hex digests
+- base64 public keys and signatures without line breaks
+- strict UTC timestamps without fractional seconds
+- raw-byte SHA-256 over `pack.yaml`
+- raw-byte SHA-256 over `pack.contents.yaml`
+- deterministic line-based `gadgets-pack-signature-v1` payload
+
+The diagnostic verifier validates `pack.contents.yaml` by checking every listed file hash, then verifies the detached `pack.signature.yaml` signature against a matching publisher/key in `.gadgets/trust/trusted_publishers.yaml`.
+
+Step 33 does not add signing tools, trust-root mutation, pack install/update, registry downloads, Team/Production enforcement, or Gadget execution behavior changes.
+
+
+## Step 34 Ed25519 verification diagnostics
+
+Step 34 adds real Ed25519 signature verification to the diagnostic `gadgets pack trust signature` path only.
+
+The command now verifies:
+
+- raw-byte SHA-256 over `pack.yaml`
+- raw-byte SHA-256 over `pack.contents.yaml`
+- every listed file hash in `pack.contents.yaml`
+- required `pack.yaml` content-manifest entry
+- absence of `pack.signature.yaml` from signed content entries
+- sorted, unique, safe relative content paths
+- strict UTC signature and trust-root expiration metadata
+- matching publisher, key id, algorithm, and allowed pack id in `.gadgets/trust/trusted_publishers.yaml`
+- Ed25519 signature over the deterministic `gadgets-pack-signature-v1` payload
+
+Step 34 remains diagnostic and non-enforcing. It does not add signing tools, trust-root mutation, pack install/update, registry downloads, Team/Production enforcement, or Gadget execution behavior changes.

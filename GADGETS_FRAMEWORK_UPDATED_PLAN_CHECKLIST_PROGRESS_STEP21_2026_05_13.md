@@ -5,7 +5,7 @@ Date: 2026-05-13
 ## Progress summary
 
 - Core safety spine through guarded remote PR creation: implemented at checkpoint/code level.
-- Local Developer MVP: about 94-96% complete, pending external Rust validation and polish.
+- Local Developer MVP: historical estimate. Step 22 later completed external Rust validation at commit c5fbd78; remaining work is alpha packaging and polish.
 - Full multi-pack roadmap: about 35-40% complete.
 
 ## Step 21 completed
@@ -43,7 +43,7 @@ Date: 2026-05-13
 
 ## Next recommended step
 
-Run external Rust validation and make bounded fixes only:
+Historical checkpoint note: Step 22 later completed external Rust validation and bounded fixes at commit c5fbd78:
 
 ```bash
 cargo fmt --check

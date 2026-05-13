@@ -87,7 +87,7 @@ Expected audit events include:
 
 ## External validation
 
-Cargo validation was not run in this environment. Run this externally when a Rust toolchain is available:
+Historical checkpoint note: Cargo validation was not run at this step. Superseded by Step 22: full Rust validation passed at commit c5fbd78.
 
 ```bash
 cargo fmt --check

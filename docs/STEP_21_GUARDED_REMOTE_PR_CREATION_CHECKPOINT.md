@@ -40,9 +40,9 @@ order, so external validation remains required.
 - ASCII scan should be run during packaging.
 - Path-length scan should be run during packaging.
 
-Cargo/Rust validation was not run in this environment.
+Historical checkpoint note: Cargo/Rust validation was not run at this step. Superseded by Step 22: full Rust validation passed at commit c5fbd78.
 
-## External validation still required
+## Historical validation note superseded by Step 22
 
 ```bash
 cargo fmt --check
@@ -54,5 +54,5 @@ cargo build --release
 
 ## Recommended next step
 
-Run the external Rust validation flow and make bounded fixes only. Do not add
+Historical note: Step 22 later completed the external Rust validation flow and bounded fixes at commit c5fbd78. Do not add
 new behavior until the Step 21 checkpoint compiles and passes validation.

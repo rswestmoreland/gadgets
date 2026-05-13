@@ -1,8 +1,10 @@
 mod config;
 mod init;
 mod manifest_loader;
+mod pack_trust;
 
 use std::env;
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -16,12 +18,13 @@ use gadgets_approval::{
 };
 use gadgets_evidence::{
     bundle_path_for_run, create_observe_bundle, default_runs_root, summarize_bundle,
-    verify_bundle_hash, EvidenceWriteRequest,
+    verify_bundle_hash, EvidenceTextArtifact, EvidenceWriteRequest, EvidenceWriteReport,
 };
 use gadgets_ledger::{
     append_event, default_ledger_path, new_audit_event, summarize_events, verify_ledger,
     with_target,
 };
+use gadgets_policy::RuntimeMode;
 use gadgets_provider::{
     AnthropicProvider, MockProvider, ModelProvider, OpenAiProvider, ProviderError, ProviderRequest,
     ProviderResponseStatus,
@@ -34,6 +37,11 @@ use gadgets_tools::{
     RemotePrProviderConfig, TestCommandSpec, TestRunRequest,
 };
 use init::init_project;
+use pack_trust::{
+    check_pack_trust, inspect_trust_roots, preview_pack_trust_policy,
+    verify_pack_signature_metadata, PackSignatureMetadataReport, PackTrustPolicyPreviewReport,
+    PackTrustReport, TrustRootsReport, TRUST_ROOT_RELATIVE_PATH as TRUST_ROOT_RELATIVE_PATH_FOR_AUDIT,
+};
 use manifest_loader::{
     ensure_pack_installed, gadget_manifest_available, load_gadget_manifest,
     load_installed_pack_manifests, load_pack_manifest, validate_installed_packs,
@@ -510,6 +518,7 @@ fn handle_pack(args: Vec<String>) {
                 std::process::exit(1);
             }
         }
+        "trust" => handle_pack_trust(args[1..].to_vec()),
         "help" | "--help" | "-h" => print_pack_help(),
         other => {
             eprintln!("unknown pack command: {other}");
@@ -517,6 +526,1054 @@ fn handle_pack(args: Vec<String>) {
             std::process::exit(2);
         }
     }
+}
+
+fn handle_pack_trust(args: Vec<String>) {
+    let Some(subcommand) = args.first() else {
+        print_pack_help();
+        std::process::exit(2);
+    };
+
+    match subcommand.as_str() {
+        "check" => {
+            let (project_root, pack_name) = parse_pack_trust_check_args(args[1..].to_vec());
+            match check_pack_trust(&project_root, &pack_name) {
+                Ok(report) => {
+                    let run_id = format!("run_pack_trust_check_{}", unix_timestamp_millis());
+                    let created_at = unix_timestamp_label();
+                    let evidence = match write_pack_trust_check_evidence(
+                        &project_root,
+                        &run_id,
+                        &created_at,
+                        &report,
+                    ) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            eprintln!("failed to write pack trust evidence: {err}");
+                            std::process::exit(1);
+                        }
+                    };
+                    if let Err(err) = append_pack_trust_audit(
+                        &project_root,
+                        &run_id,
+                        "pack.trust.checked",
+                        "pack",
+                        &report.pack_name,
+                        &report.decision,
+                        "Pack trust diagnostic check completed.",
+                    ) {
+                        eprintln!("failed to append pack trust audit event: {err}");
+                        std::process::exit(1);
+                    }
+                    if let Err(err) = append_pack_trust_audit(
+                        &project_root,
+                        &run_id,
+                        "evidence.created",
+                        "evidence_bundle",
+                        &format!("evb_{run_id}"),
+                        "created",
+                        "Pack trust diagnostic evidence bundle created.",
+                    ) {
+                        eprintln!("failed to append evidence audit event: {err}");
+                        std::process::exit(1);
+                    }
+                    print_pack_trust_report(&report);
+                    println!("Run: {run_id}");
+                    println!("Evidence: {}", evidence.bundle_path.display());
+                    println!("Ledger: {}", default_ledger_path(&project_root).display());
+                }
+                Err(err) => {
+                    eprintln!("failed to inspect pack trust: {err}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "preview" => {
+            let (project_root, mode_override, pack_name) =
+                parse_pack_trust_preview_args(args[1..].to_vec());
+            let runtime_mode = match mode_override {
+                Some(value) => match parse_pack_trust_preview_mode(&value) {
+                    Ok(mode) => mode,
+                    Err(err) => {
+                        eprintln!("{err}");
+                        std::process::exit(2);
+                    }
+                },
+                None => {
+                    let config = match load_project_config(&project_root) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            eprintln!("failed to load Gadgets config: {err}");
+                            std::process::exit(1);
+                        }
+                    };
+                    match config.runtime_mode() {
+                        Ok(mode) => mode,
+                        Err(err) => {
+                            eprintln!("invalid Gadgets runtime mode: {err}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+            };
+            match preview_pack_trust_policy(&project_root, &pack_name, runtime_mode) {
+                Ok(report) => {
+                    let run_id = format!("run_pack_trust_preview_{}", unix_timestamp_millis());
+                    let created_at = unix_timestamp_label();
+                    let evidence = match write_pack_trust_preview_evidence(
+                        &project_root,
+                        &run_id,
+                        &created_at,
+                        &report,
+                    ) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            eprintln!("failed to write pack trust preview evidence: {err}");
+                            std::process::exit(1);
+                        }
+                    };
+                    if let Err(err) = append_pack_trust_audit(
+                        &project_root,
+                        &run_id,
+                        "pack.trust.policy.previewed",
+                        "pack",
+                        &report.pack.pack_name,
+                        &report.preview_decision,
+                        "Pack trust policy preview completed.",
+                    ) {
+                        eprintln!("failed to append pack trust preview audit event: {err}");
+                        std::process::exit(1);
+                    }
+                    if let Err(err) = append_pack_trust_audit(
+                        &project_root,
+                        &run_id,
+                        "evidence.created",
+                        "evidence_bundle",
+                        &format!("evb_{run_id}"),
+                        "created",
+                        "Pack trust policy preview evidence bundle created.",
+                    ) {
+                        eprintln!("failed to append evidence audit event: {err}");
+                        std::process::exit(1);
+                    }
+                    print_pack_trust_preview_report(&report);
+                    println!("Run: {run_id}");
+                    println!("Evidence: {}", evidence.bundle_path.display());
+                    println!("Ledger: {}", default_ledger_path(&project_root).display());
+                }
+                Err(err) => {
+                    eprintln!("failed to preview pack trust policy: {err}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "signature" => {
+            let (project_root, pack_name) = parse_pack_trust_check_args(args[1..].to_vec());
+            match verify_pack_signature_metadata(&project_root, &pack_name) {
+                Ok(report) => {
+                    let run_id = format!("run_pack_signature_{}", unix_timestamp_millis());
+                    let created_at = unix_timestamp_label();
+                    let evidence = match write_pack_signature_metadata_evidence(
+                        &project_root,
+                        &run_id,
+                        &created_at,
+                        &report,
+                    ) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            eprintln!("failed to write signature verification evidence: {err}");
+                            std::process::exit(1);
+                        }
+                    };
+                    if let Err(err) = append_pack_trust_audit(
+                        &project_root,
+                        &run_id,
+                        "pack.signature.checked",
+                        "pack",
+                        &report.pack.pack_name,
+                        &report.metadata_decision,
+                        "Pack signature verification diagnostic check completed.",
+                    ) {
+                        eprintln!("failed to append signature metadata audit event: {err}");
+                        std::process::exit(1);
+                    }
+                    if let Err(err) = append_pack_trust_audit(
+                        &project_root,
+                        &run_id,
+                        "evidence.created",
+                        "evidence_bundle",
+                        &format!("evb_{run_id}"),
+                        "created",
+                        "Pack signature verification diagnostic evidence bundle created.",
+                    ) {
+                        eprintln!("failed to append evidence audit event: {err}");
+                        std::process::exit(1);
+                    }
+                    print_pack_signature_metadata_report(&report);
+                    println!("Run: {run_id}");
+                    println!("Evidence: {}", evidence.bundle_path.display());
+                    println!("Ledger: {}", default_ledger_path(&project_root).display());
+                }
+                Err(err) => {
+                    eprintln!("failed to check pack signature: {err}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "roots" => {
+            let project_root = parse_pack_trust_roots_args(args[1..].to_vec());
+            match inspect_trust_roots(&project_root) {
+                Ok(report) => {
+                    let run_id = format!("run_trust_roots_{}", unix_timestamp_millis());
+                    let created_at = unix_timestamp_label();
+                    let evidence = match write_trust_roots_evidence(
+                        &project_root,
+                        &run_id,
+                        &created_at,
+                        &report,
+                    ) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            eprintln!("failed to write trust root evidence: {err}");
+                            std::process::exit(1);
+                        }
+                    };
+                    let event_type = if report.exists {
+                        "trust.root.loaded"
+                    } else {
+                        "trust.root.missing"
+                    };
+                    let decision = if report.exists { "loaded" } else { "missing" };
+                    if let Err(err) = append_pack_trust_audit(
+                        &project_root,
+                        &run_id,
+                        event_type,
+                        "trust_root",
+                        TRUST_ROOT_RELATIVE_PATH_FOR_AUDIT,
+                        decision,
+                        "Trust root diagnostic inspection completed.",
+                    ) {
+                        eprintln!("failed to append trust root audit event: {err}");
+                        std::process::exit(1);
+                    }
+                    if let Err(err) = append_pack_trust_audit(
+                        &project_root,
+                        &run_id,
+                        "evidence.created",
+                        "evidence_bundle",
+                        &format!("evb_{run_id}"),
+                        "created",
+                        "Trust root diagnostic evidence bundle created.",
+                    ) {
+                        eprintln!("failed to append evidence audit event: {err}");
+                        std::process::exit(1);
+                    }
+                    print_trust_roots_report(&report);
+                    println!("Run: {run_id}");
+                    println!("Evidence: {}", evidence.bundle_path.display());
+                    println!("Ledger: {}", default_ledger_path(&project_root).display());
+                }
+                Err(err) => {
+                    eprintln!("failed to inspect trust roots: {err}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        "help" | "--help" | "-h" => print_pack_help(),
+        other => {
+            eprintln!("unknown pack trust command: {other}");
+            print_pack_help();
+            std::process::exit(2);
+        }
+    }
+}
+
+
+fn write_pack_trust_check_evidence(
+    project_root: &Path,
+    run_id: &str,
+    created_at: &str,
+    report: &PackTrustReport,
+) -> Result<EvidenceWriteReport, gadgets_evidence::EvidenceError> {
+    let mut request = EvidenceWriteRequest::observe(
+        run_id,
+        "pack.trust",
+        created_at,
+        format!(
+            "Pack trust diagnostic check completed for {} with decision {}.",
+            report.pack_name, report.decision
+        ),
+    );
+    request.extra_artifacts = vec![
+        EvidenceTextArtifact::new(
+            "pack_trust_decision",
+            "pack_trust_decision.txt",
+            format!(
+                "decision: {}\nenforcement_enabled: {}\nsource_kind: {}\n",
+                report.decision,
+                report.enforcement_enabled,
+                report.source_kind.as_str()
+            ),
+        ),
+        EvidenceTextArtifact::new("pack_identity", "pack_identity.yaml", pack_identity_yaml(report)),
+        EvidenceTextArtifact::new(
+            "pack_manifest_hash",
+            "pack_manifest_hash.txt",
+            format!("manifest_sha256: {}\n", report.manifest_sha256),
+        ),
+        EvidenceTextArtifact::new(
+            "pack_contents_summary",
+            "pack_contents_summary.txt",
+            pack_contents_summary_text(report),
+        ),
+        EvidenceTextArtifact::new(
+            "pack_signature_summary",
+            "pack_signature_summary.yaml",
+            pack_signature_summary_yaml(report),
+        ),
+        EvidenceTextArtifact::new(
+            "trust_root_summary",
+            "trust_root_summary.txt",
+            format!(
+                "trust_roots_present: {}\npath: {}\n",
+                report.trust_roots_present, TRUST_ROOT_RELATIVE_PATH_FOR_AUDIT
+            ),
+        ),
+        EvidenceTextArtifact::new(
+            "trust_findings",
+            "trust_findings.txt",
+            pack_findings_text(&report.findings),
+        ),
+        EvidenceTextArtifact::new(
+            "policy_mode",
+            "policy_mode.txt",
+            "diagnostic_only: true\nenforcement_enabled: false\n".to_string(),
+        ),
+    ];
+    create_observe_bundle(&default_runs_root(project_root), request)
+}
+
+fn write_pack_trust_preview_evidence(
+    project_root: &Path,
+    run_id: &str,
+    created_at: &str,
+    report: &PackTrustPolicyPreviewReport,
+) -> Result<EvidenceWriteReport, gadgets_evidence::EvidenceError> {
+    let mut request = EvidenceWriteRequest::observe(
+        run_id,
+        "pack.trust",
+        created_at,
+        format!(
+            "Pack trust policy preview completed for {} in {} mode with decision {}.",
+            report.pack.pack_name,
+            report.runtime_mode.as_str(),
+            report.preview_decision
+        ),
+    );
+    request.extra_artifacts = vec![
+        EvidenceTextArtifact::new(
+            "pack_trust_policy_preview",
+            "pack_trust_policy_preview.txt",
+            format!(
+                "runtime_mode: {}\npreview_decision: {}\nwould_allow_load: {}\nwould_require_verified_signature: {}\nwould_require_trust_root: {}\nenforcement_active: {}\nsignature_metadata_decision: {}\nsignature_present: {}\ncryptographic_verification_performed: {}\ncryptographic_verification_valid: {}\ncontent_manifest_valid: {}\nsignature_expired: {}\ntrust_root_expired: {}\n",
+                report.runtime_mode.as_str(),
+                report.preview_decision,
+                report.would_allow_load,
+                report.would_require_verified_signature,
+                report.would_require_trust_root,
+                report.enforcement_active,
+                report.signature_metadata_decision,
+                report.signature_present,
+                report.cryptographic_verification_performed,
+                report.cryptographic_verification_valid,
+                report.content_manifest_valid,
+                report.signature_expired,
+                report.trust_root_expired
+            ),
+        ),
+        EvidenceTextArtifact::new(
+            "pack_identity",
+            "pack_identity.yaml",
+            pack_identity_yaml(&report.pack),
+        ),
+        EvidenceTextArtifact::new(
+            "pack_manifest_hash",
+            "pack_manifest_hash.txt",
+            format!("manifest_sha256: {}\n", report.pack.manifest_sha256),
+        ),
+        EvidenceTextArtifact::new(
+            "pack_trust_decision",
+            "pack_trust_decision.txt",
+            format!(
+                "diagnostic_decision: {}\npolicy_preview_decision: {}\nsignature_metadata_decision: {}\ncryptographic_verification_valid: {}\n",
+                report.pack.decision,
+                report.preview_decision,
+                report.signature_metadata_decision,
+                report.cryptographic_verification_valid
+            ),
+        ),
+        EvidenceTextArtifact::new(
+            "signature_policy_inputs",
+            "signature_policy_inputs.txt",
+            format!(
+                "signature_present: {}\ncryptographic_verification_performed: {}\ncryptographic_verification_valid: {}\ncontent_manifest_valid: {}\nsignature_expired: {}\ntrust_root_expired: {}\n",
+                report.signature_present,
+                report.cryptographic_verification_performed,
+                report.cryptographic_verification_valid,
+                report.content_manifest_valid,
+                report.signature_expired,
+                report.trust_root_expired
+            ),
+        ),
+        EvidenceTextArtifact::new(
+            "trust_findings",
+            "trust_findings.txt",
+            pack_findings_text(&report.findings),
+        ),
+        EvidenceTextArtifact::new(
+            "policy_mode",
+            "policy_mode.txt",
+            "diagnostic_only: true\nenforcement_active: false\n".to_string(),
+        ),
+    ];
+    create_observe_bundle(&default_runs_root(project_root), request)
+}
+
+fn write_pack_signature_metadata_evidence(
+    project_root: &Path,
+    run_id: &str,
+    created_at: &str,
+    report: &PackSignatureMetadataReport,
+) -> Result<EvidenceWriteReport, gadgets_evidence::EvidenceError> {
+    let mut request = EvidenceWriteRequest::observe(
+        run_id,
+        "pack.trust",
+        created_at,
+        format!(
+            "Pack signature verification diagnostic completed for {} with decision {}.",
+            report.pack.pack_name, report.metadata_decision
+        ),
+    );
+    request.extra_artifacts = vec![
+        EvidenceTextArtifact::new(
+            "signature_metadata_check",
+            "signature_metadata_check.txt",
+            format!(
+                "metadata_decision: {}\nsignature_present: {}\nmetadata_valid: {}\npublisher_reference_found: {}\npack_allowed_by_trust_root: {}\ncontent_manifest_valid: {}\ncryptographic_verification_performed: {}\ncryptographic_verification_valid: {}\nsignature_expired: {}\ntrust_root_expired: {}\n",
+                report.metadata_decision,
+                report.signature_present,
+                report.metadata_valid,
+                report.publisher_reference_found,
+                report.pack_allowed_by_trust_root,
+                report.content_manifest_valid,
+                report.cryptographic_verification_performed,
+                report.cryptographic_verification_valid,
+                report.signature_expired,
+                report.trust_root_expired
+            ),
+        ),
+        EvidenceTextArtifact::new(
+            "signature_verification_result",
+            "signature_verification_result.txt",
+            format!(
+                "metadata_decision: {}\ncryptographic_verification_performed: {}\ncryptographic_verification_valid: {}\ncontent_manifest_valid: {}\n",
+                report.metadata_decision,
+                report.cryptographic_verification_performed,
+                report.cryptographic_verification_valid,
+                report.content_manifest_valid
+            ),
+        ),
+        EvidenceTextArtifact::new(
+            "signature_payload_v1",
+            "signature_payload_v1.txt",
+            report
+                .signature_payload_v1
+                .clone()
+                .unwrap_or_else(|| "signature_payload_v1: unavailable\n".to_string()),
+        ),
+        EvidenceTextArtifact::new(
+            "pack_identity",
+            "pack_identity.yaml",
+            pack_identity_yaml(&report.pack),
+        ),
+        EvidenceTextArtifact::new(
+            "pack_manifest_hash",
+            "pack_manifest_hash.txt",
+            format!("manifest_sha256: {}\n", report.pack.manifest_sha256),
+        ),
+        EvidenceTextArtifact::new(
+            "pack_signature_summary",
+            "pack_signature_summary.yaml",
+            pack_signature_summary_yaml(&report.pack),
+        ),
+        EvidenceTextArtifact::new(
+            "trust_root_summary",
+            "trust_root_summary.yaml",
+            trust_root_summary_yaml(&report.trust_roots),
+        ),
+        EvidenceTextArtifact::new(
+            "signature_metadata_findings",
+            "signature_metadata_findings.txt",
+            pack_findings_text(&report.findings),
+        ),
+        EvidenceTextArtifact::new(
+            "policy_mode",
+            "policy_mode.txt",
+            format!(
+                "diagnostic_only: true\nenforcement_enabled: false\ncryptographic_verification_performed: {}\ncryptographic_verification_valid: {}\n",
+                report.cryptographic_verification_performed,
+                report.cryptographic_verification_valid
+            ),
+        ),
+    ];
+    create_observe_bundle(&default_runs_root(project_root), request)
+}
+
+fn write_trust_roots_evidence(
+    project_root: &Path,
+    run_id: &str,
+    created_at: &str,
+    report: &TrustRootsReport,
+) -> Result<EvidenceWriteReport, gadgets_evidence::EvidenceError> {
+    let mut request = EvidenceWriteRequest::observe(
+        run_id,
+        "pack.trust",
+        created_at,
+        "Trust root diagnostic inspection completed.",
+    );
+    request.extra_artifacts = vec![
+        EvidenceTextArtifact::new(
+            "trust_root_path",
+            "trust_root_path.txt",
+            format!("{}\n", report.path.display()),
+        ),
+        EvidenceTextArtifact::new(
+            "trust_root_summary",
+            "trust_root_summary.yaml",
+            trust_root_summary_yaml(report),
+        ),
+        EvidenceTextArtifact::new(
+            "trusted_publishers_summary",
+            "trusted_publishers_summary.txt",
+            trusted_publishers_summary_text(report),
+        ),
+        EvidenceTextArtifact::new(
+            "trust_root_findings",
+            "trust_root_findings.txt",
+            pack_findings_text(&report.findings),
+        ),
+    ];
+    create_observe_bundle(&default_runs_root(project_root), request)
+}
+
+fn append_pack_trust_audit(
+    project_root: &Path,
+    run_id: &str,
+    event_type: &str,
+    target_kind: &str,
+    target_id: &str,
+    decision: &str,
+    summary: &str,
+) -> Result<(), gadgets_ledger::LedgerError> {
+    let ledger_path = default_ledger_path(project_root);
+    let event = new_audit_event(
+        format!("aud_{}_{}", run_id, unix_timestamp_millis()),
+        unix_timestamp_label(),
+        event_type,
+        "gadget",
+        "pack.trust",
+        run_id,
+        decision,
+        summary,
+    );
+    let event = with_target(event, target_kind, target_id);
+    append_event(&ledger_path, event)?;
+    Ok(())
+}
+
+fn pack_identity_yaml(report: &PackTrustReport) -> String {
+    format!(
+        "pack_name: {}\npack_version: {}\nsource: {}\nsource_kind: {}\ndecision: {}\n",
+        report.pack_name,
+        report.pack_version,
+        report.source,
+        report.source_kind.as_str(),
+        report.decision
+    )
+}
+
+fn pack_contents_summary_text(report: &PackTrustReport) -> String {
+    match &report.contents_manifest {
+        Some(contents) => format!(
+            "path: {}\nsha256: {}\nfile_count: {}\n",
+            contents.path.display(),
+            contents.sha256,
+            contents.file_count
+        ),
+        None => "contents_manifest_present: false\n".to_string(),
+    }
+}
+
+fn pack_signature_summary_yaml(report: &PackTrustReport) -> String {
+    match &report.signature {
+        Some(signature) => {
+            let mut out = String::new();
+            let _ = writeln!(out, "signature_file_present: true");
+            let _ = writeln!(out, "path: {}", signature.path.display());
+            let _ = writeln!(out, "sha256: {}", signature.sha256);
+            let _ = writeln!(
+                out,
+                "version: {}",
+                signature.version.as_deref().unwrap_or("unknown")
+            );
+            let _ = writeln!(
+                out,
+                "algorithm: {}",
+                signature.algorithm.as_deref().unwrap_or("unknown")
+            );
+            let _ = writeln!(
+                out,
+                "publisher: {}",
+                signature.publisher.as_deref().unwrap_or("unknown")
+            );
+            let _ = writeln!(
+                out,
+                "key_id: {}",
+                signature.key_id.as_deref().unwrap_or("unknown")
+            );
+            if let Some(value) = signature.pack_id.as_deref() {
+                let _ = writeln!(out, "pack_id: {value}");
+            }
+            if let Some(value) = signature.pack_version.as_deref() {
+                let _ = writeln!(out, "pack_version: {value}");
+            }
+            if let Some(value) = signature.manifest_sha256.as_deref() {
+                let _ = writeln!(out, "manifest_sha256: {value}");
+            }
+            if let Some(value) = signature.contents_sha256.as_deref() {
+                let _ = writeln!(out, "contents_sha256: {value}");
+            }
+            if let Some(value) = signature.created_at.as_deref() {
+                let _ = writeln!(out, "created_at: {value}");
+            }
+            if let Some(value) = signature.expires_at.as_deref() {
+                let _ = writeln!(out, "expires_at: {value}");
+            }
+            let _ = writeln!(out, "signature_present: {}", signature.signature_present);
+            out
+        }
+        None => "signature_present: false\n".to_string(),
+    }
+}
+
+fn trust_root_summary_yaml(report: &TrustRootsReport) -> String {
+    format!(
+        "path: {}\nexists: {}\nparsed: {}\nversion: {}\npublisher_count: {}\n",
+        report.path.display(),
+        report.exists,
+        report.parsed,
+        report.version.as_deref().unwrap_or("unknown"),
+        report.publisher_count
+    )
+}
+
+fn trusted_publishers_summary_text(report: &TrustRootsReport) -> String {
+    if report.publishers.is_empty() {
+        return "trusted_publishers: none\n".to_string();
+    }
+
+    let mut out = String::new();
+    for publisher in &report.publishers {
+        let _ = writeln!(
+            out,
+            "publisher: {}",
+            publisher.publisher.as_deref().unwrap_or("unknown")
+        );
+        let _ = writeln!(
+            out,
+            "key_id: {}",
+            publisher.key_id.as_deref().unwrap_or("unknown")
+        );
+        let _ = writeln!(
+            out,
+            "algorithm: {}",
+            publisher.algorithm.as_deref().unwrap_or("unknown")
+        );
+        let _ = writeln!(out, "public_key_present: {}", publisher.public_key_present);
+        let _ = writeln!(out, "allowed_pack_count: {}", publisher.allowed_pack_count);
+        if !publisher.allowed_pack_ids.is_empty() {
+            let _ = writeln!(out, "allowed_pack_ids: {}", publisher.allowed_pack_ids.join(","));
+        }
+        if let Some(value) = publisher.expires_at.as_deref() {
+            let _ = writeln!(out, "expires_at: {value}");
+        }
+        let _ = writeln!(out);
+    }
+    out
+}
+
+fn pack_findings_text(findings: &[pack_trust::PackTrustFinding]) -> String {
+    if findings.is_empty() {
+        return "none\n".to_string();
+    }
+
+    let mut out = String::new();
+    for finding in findings {
+        let _ = writeln!(out, "{}: {}", finding.severity.as_str(), finding.message);
+    }
+    out
+}
+
+fn parse_pack_trust_roots_args(args: Vec<String>) -> PathBuf {
+    let mut project_root = PathBuf::from(".");
+    let mut iter = args.into_iter();
+
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--project" | "--root" => {
+                let Some(path) = iter.next() else {
+                    eprintln!("{arg} requires a path");
+                    std::process::exit(2);
+                };
+                project_root = PathBuf::from(path);
+            }
+            _ => {
+                eprintln!("unexpected pack trust roots argument: {arg}");
+                print_pack_help();
+                std::process::exit(2);
+            }
+        }
+    }
+
+    project_root
+}
+
+fn parse_pack_trust_check_args(args: Vec<String>) -> (PathBuf, String) {
+    let mut project_root = PathBuf::from(".");
+    let mut pack_name = None;
+    let mut iter = args.into_iter();
+
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--project" | "--root" => {
+                let Some(path) = iter.next() else {
+                    eprintln!("{arg} requires a path");
+                    std::process::exit(2);
+                };
+                project_root = PathBuf::from(path);
+            }
+            "--" => {
+                if let Some(value) = iter.next() {
+                    if pack_name.replace(value).is_some() {
+                        eprintln!("pack trust check accepts exactly one pack name");
+                        std::process::exit(2);
+                    }
+                }
+                if iter.next().is_some() {
+                    eprintln!("pack trust check accepts exactly one pack name");
+                    std::process::exit(2);
+                }
+                break;
+            }
+            _ => {
+                if pack_name.replace(arg).is_some() {
+                    eprintln!("pack trust check accepts exactly one pack name");
+                    std::process::exit(2);
+                }
+            }
+        }
+    }
+
+    let Some(pack_name) = pack_name else {
+        print_pack_help();
+        std::process::exit(2);
+    };
+
+    (project_root, pack_name)
+}
+
+fn parse_pack_trust_preview_args(args: Vec<String>) -> (PathBuf, Option<String>, String) {
+    let mut project_root = PathBuf::from(".");
+    let mut mode_override = None;
+    let mut pack_name = None;
+    let mut iter = args.into_iter();
+
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--project" | "--root" => {
+                let Some(path) = iter.next() else {
+                    eprintln!("{arg} requires a path");
+                    std::process::exit(2);
+                };
+                project_root = PathBuf::from(path);
+            }
+            "--mode" => {
+                let Some(value) = iter.next() else {
+                    eprintln!("--mode requires safe, team, or production");
+                    std::process::exit(2);
+                };
+                mode_override = Some(value);
+            }
+            "--" => {
+                if let Some(value) = iter.next() {
+                    if pack_name.replace(value).is_some() {
+                        eprintln!("pack trust preview accepts exactly one pack name");
+                        std::process::exit(2);
+                    }
+                }
+                if iter.next().is_some() {
+                    eprintln!("pack trust preview accepts exactly one pack name");
+                    std::process::exit(2);
+                }
+                break;
+            }
+            _ => {
+                if pack_name.replace(arg).is_some() {
+                    eprintln!("pack trust preview accepts exactly one pack name");
+                    std::process::exit(2);
+                }
+            }
+        }
+    }
+
+    let Some(pack_name) = pack_name else {
+        print_pack_help();
+        std::process::exit(2);
+    };
+
+    (project_root, mode_override, pack_name)
+}
+
+fn parse_pack_trust_preview_mode(input: &str) -> Result<RuntimeMode, String> {
+    match input {
+        "safe" => Ok(RuntimeMode::Safe),
+        "team" => Ok(RuntimeMode::Team),
+        "production" => Ok(RuntimeMode::Production),
+        other => Err(format!(
+            "invalid pack trust preview mode `{other}`; expected safe, team, or production"
+        )),
+    }
+}
+
+fn print_pack_trust_preview_report(report: &PackTrustPolicyPreviewReport) {
+    println!("Pack trust policy preview: {}", report.pack.pack_name);
+    println!("Version: {}", report.pack.pack_version);
+    println!("Runtime mode: {}", report.runtime_mode.as_str());
+    println!("Source: {}", report.pack.source);
+    println!("Source kind: {}", report.pack.source_kind.as_str());
+    println!("Diagnostic decision: {}", report.pack.decision);
+    println!("Policy preview decision: {}", report.preview_decision);
+    println!("Signature metadata decision: {}", report.signature_metadata_decision);
+    println!("Signature present: {}", report.signature_present);
+    println!(
+        "Cryptographic verification performed: {}",
+        report.cryptographic_verification_performed
+    );
+    println!(
+        "Cryptographic verification valid: {}",
+        report.cryptographic_verification_valid
+    );
+    println!("Content manifest valid: {}", report.content_manifest_valid);
+    println!("Signature expired: {}", report.signature_expired);
+    println!("Trust root expired: {}", report.trust_root_expired);
+    println!("Would allow load: {}", report.would_allow_load);
+    println!(
+        "Would require verified signature: {}",
+        report.would_require_verified_signature
+    );
+    println!("Would require trust root: {}", report.would_require_trust_root);
+    println!("Enforcement active: {}", report.enforcement_active);
+    println!("Manifest SHA-256: {}", report.pack.manifest_sha256);
+
+    if !report.findings.is_empty() {
+        println!();
+        println!("Findings:");
+        for finding in &report.findings {
+            println!("  - {}: {}", finding.severity.as_str(), finding.message);
+        }
+    }
+
+    println!();
+    println!("This command is diagnostic only. It consumes signature verification diagnostics to preview future pack trust policy outcomes, but it does not enforce signatures, mutate trust roots, install packs, download packs, or execute Gadgets.");
+}
+
+fn print_pack_signature_metadata_report(report: &PackSignatureMetadataReport) {
+    println!("Pack signature verification check: {}", report.pack.pack_name);
+    println!("Version: {}", report.pack.pack_version);
+    println!("Source: {}", report.pack.source);
+    println!("Source kind: {}", report.pack.source_kind.as_str());
+    println!("Metadata decision: {}", report.metadata_decision);
+    println!("Signature present: {}", report.signature_present);
+    println!("Metadata valid: {}", report.metadata_valid);
+    println!(
+        "Publisher reference found: {}",
+        report.publisher_reference_found
+    );
+    println!(
+        "Pack allowed by trust root: {}",
+        report.pack_allowed_by_trust_root
+    );
+    println!(
+        "Cryptographic verification performed: {}",
+        report.cryptographic_verification_performed
+    );
+    println!(
+        "Cryptographic verification valid: {}",
+        report.cryptographic_verification_valid
+    );
+    println!("Content manifest valid: {}", report.content_manifest_valid);
+    println!("Signature expired: {}", report.signature_expired);
+    println!("Trust root expired: {}", report.trust_root_expired);
+    println!("Manifest SHA-256: {}", report.pack.manifest_sha256);
+
+    match &report.pack.signature {
+        Some(signature) => {
+            println!("Signature file: {}", signature.path.display());
+            println!("Signature file SHA-256: {}", signature.sha256);
+            println!(
+                "Signature version: {}",
+                signature.version.as_deref().unwrap_or("unknown")
+            );
+            println!(
+                "Signature algorithm: {}",
+                signature.algorithm.as_deref().unwrap_or("unknown")
+            );
+            println!(
+                "Signature publisher: {}",
+                signature.publisher.as_deref().unwrap_or("unknown")
+            );
+            println!(
+                "Signature key id: {}",
+                signature.key_id.as_deref().unwrap_or("unknown")
+            );
+            println!("Signature value present: {}", signature.signature_present);
+        }
+        None => println!("Signature file: none"),
+    }
+
+    println!("Trust roots present: {}", report.trust_roots.exists);
+    println!("Trusted publishers: {}", report.trust_roots.publisher_count);
+
+    if !report.findings.is_empty() {
+        println!();
+        println!("Findings:");
+        for finding in &report.findings {
+            println!("  - {}: {}", finding.severity.as_str(), finding.message);
+        }
+    }
+
+    println!();
+    println!("This command is diagnostic only. It validates signature metadata, verifies Ed25519 signatures when signed metadata and trust roots are available, and does not enforce signatures, mutate trust roots, install packs, download packs, or execute Gadgets.");
+}
+
+fn print_trust_roots_report(report: &TrustRootsReport) {
+    println!("Pack trust roots check");
+    println!("Path: {}", report.path.display());
+    println!("Exists: {}", report.exists);
+    println!("Parsed: {}", report.parsed);
+    println!(
+        "Version: {}",
+        report.version.as_deref().unwrap_or("unknown")
+    );
+    println!("Trusted publishers: {}", report.publisher_count);
+
+    if !report.publishers.is_empty() {
+        println!();
+        println!("Publishers:");
+        for publisher in &report.publishers {
+            println!(
+                "  - publisher: {}",
+                publisher.publisher.as_deref().unwrap_or("unknown")
+            );
+            println!(
+                "    key id: {}",
+                publisher.key_id.as_deref().unwrap_or("unknown")
+            );
+            println!(
+                "    algorithm: {}",
+                publisher.algorithm.as_deref().unwrap_or("unknown")
+            );
+            println!("    public key present: {}", publisher.public_key_present);
+            println!("    allowed pack ids: {}", publisher.allowed_pack_count);
+            if let Some(expires_at) = publisher.expires_at.as_deref() {
+                println!("    expires at: {expires_at}");
+            }
+        }
+    }
+
+    if !report.findings.is_empty() {
+        println!();
+        println!("Findings:");
+        for finding in &report.findings {
+            println!("  - {}: {}", finding.severity.as_str(), finding.message);
+        }
+    }
+
+    println!();
+    println!("This command is diagnostic only. It does not verify signatures, enforce trust, mutate trust roots, install packs, download packs, or execute Gadgets.");
+}
+
+fn print_pack_trust_report(report: &PackTrustReport) {
+    println!("Pack trust check: {}", report.pack_name);
+    println!("Version: {}", report.pack_version);
+    println!("Source: {}", report.source);
+    println!("Source kind: {}", report.source_kind.as_str());
+    println!("Decision: {}", report.decision);
+    println!("Enforcement enabled: {}", report.enforcement_enabled);
+    println!("Manifest SHA-256: {}", report.manifest_sha256);
+    println!("Trust roots present: {}", report.trust_roots_present);
+
+    match &report.contents_manifest {
+        Some(contents) => {
+            println!("Contents manifest: {}", contents.path.display());
+            println!("Contents manifest SHA-256: {}", contents.sha256);
+            println!("Contents file entries: {}", contents.file_count);
+        }
+        None => println!("Contents manifest: none"),
+    }
+
+    match &report.signature {
+        Some(signature) => {
+            println!("Signature file: {}", signature.path.display());
+            println!("Signature file SHA-256: {}", signature.sha256);
+            println!(
+                "Signature algorithm: {}",
+                signature.algorithm.as_deref().unwrap_or("unknown")
+            );
+            println!(
+                "Signature publisher: {}",
+                signature.publisher.as_deref().unwrap_or("unknown")
+            );
+            println!(
+                "Signature key id: {}",
+                signature.key_id.as_deref().unwrap_or("unknown")
+            );
+            if let Some(value) = signature.pack_id.as_deref() {
+                println!("Signature pack id: {value}");
+            }
+            if let Some(value) = signature.pack_version.as_deref() {
+                println!("Signature pack version: {value}");
+            }
+            if let Some(value) = signature.created_at.as_deref() {
+                println!("Signature created at: {value}");
+            }
+            if let Some(value) = signature.expires_at.as_deref() {
+                println!("Signature expires at: {value}");
+            }
+        }
+        None => println!("Signature file: none"),
+    }
+
+    if !report.findings.is_empty() {
+        println!();
+        println!("Findings:");
+        for finding in &report.findings {
+            println!("  - {}: {}", finding.severity.as_str(), finding.message);
+        }
+    }
+
+    println!();
+    println!("This command is diagnostic only. It does not enforce signatures, mutate trust roots, install packs, download packs, or execute Gadgets.");
 }
 
 fn parse_pack_validate_args(args: Vec<String>) -> (PathBuf, bool, Option<String>) {
@@ -827,12 +1884,16 @@ fn parse_git_pr_create_args(
 fn remote_pr_provider_config(config: &CliRemotePrConfig) -> RemotePrProviderConfig {
     RemotePrProviderConfig {
         enabled: config.enabled,
+        dry_run: config.dry_run,
         provider: config.provider.clone(),
         owner: config.owner.clone(),
         repo: config.repo.clone(),
         api_base: config.api_base.clone(),
         token_env: config.token_env.clone(),
         default_base_branch: config.default_base_branch.clone(),
+        allowed_base_branches: config.allowed_base_branches.clone(),
+        allowed_head_prefixes: config.allowed_head_prefixes.clone(),
+        duplicate_strategy: config.duplicate_strategy.clone(),
     }
 }
 
@@ -1203,6 +2264,8 @@ fn handle_git(args: Vec<String>) {
                             println!("Git branch run: {}", report.run_id);
                             println!("Branch: {}", report.branch_name);
                             println!("Passed: {}", report.passed);
+                            println!("Dry run: {}", report.dry_run);
+                            println!("Duplicate PR found: {}", report.duplicate_found);
                             println!(
                                 "Exit code: {}",
                                 report
@@ -1316,6 +2379,8 @@ fn handle_git(args: Vec<String>) {
                             println!("Approval request: {}", report.approval_request_id);
                             println!("Branch: {}", report.branch_name);
                             println!("Passed: {}", report.passed);
+                            println!("Dry run: {}", report.dry_run);
+                            println!("Duplicate PR found: {}", report.duplicate_found);
                             println!(
                                 "Exit code: {}",
                                 report
@@ -1519,7 +2584,8 @@ fn handle_git(args: Vec<String>) {
                         loaded_pack.source.label()
                     );
                     println!("Gadget manifest source: {}", loaded_git.source.label());
-                    println!("Safety: this requires explicit remote_pr.enabled config, verified approval, and local PR body evidence before one GitHub API call.");
+                    println!("Dry run: {}", config.git.remote_pr.dry_run);
+                    println!("Safety: this requires explicit remote_pr.enabled config, verified approval, local PR body evidence, allowed branch rules, and duplicate-open-PR checks before any GitHub API mutation.");
                     println!("No Git push, pull, fetch, merge, rebase, checkout, switch, shell, provider tool, patch apply, test run, Linux admin, database, cloud, or deployment action will run.");
                     println!();
 
@@ -1529,6 +2595,8 @@ fn handle_git(args: Vec<String>) {
                             println!("Repository: {}", report.repository);
                             println!("Title: {}", report.title);
                             println!("Passed: {}", report.passed);
+                            println!("Dry run: {}", report.dry_run);
+                            println!("Duplicate PR found: {}", report.duplicate_found);
                             println!(
                                 "HTTP status: {}",
                                 report
@@ -2090,6 +3158,10 @@ fn print_help() {
     println!("  gadgets pack list [--project <path>]");
     println!("  gadgets pack show [--project <path>] <pack>");
     println!("  gadgets pack validate [--project <path>] [--strict] [pack]");
+    println!("  gadgets pack trust check [--project <path>] <pack>");
+    println!("  gadgets pack trust roots [--project <path>]");
+    println!("  gadgets pack trust preview [--project <path>] [--mode safe|team|production] <pack>");
+    println!("  gadgets pack trust signature [--project <path>] <pack>");
     println!("  gadgets help");
     println!("  gadgets version");
     println!();
@@ -2104,7 +3176,7 @@ fn print_help() {
     );
     println!("  test      Run a named allowlisted test command from .gadgets/config.yaml.");
     println!("  git       Read local Git status, create protected local branches, commit approved patches, generate PR bodies, and create guarded remote PRs through fixed commands.");
-    println!("  pack      List, show, or validate Gadget pack manifests.");
+    println!("  pack      List, show, validate, or inspect trust status for Gadget pack manifests.");
 }
 
 fn print_test_help() {
@@ -2134,7 +3206,7 @@ fn print_git_help() {
     println!("branch create runs fixed local git branch creation after branch-name and protected-branch checks.");
     println!("commit approved-patch verifies a scoped approval, rejects protected current branches, stages only approved files, and creates one local commit.");
     println!("pr body generates local Markdown evidence only; it does not create a remote PR.");
-    println!("pr create creates one remote GitHub pull request only when remote_pr.enabled is true and approval plus PR-body evidence are verified.");
+    println!("pr create creates one remote GitHub pull request only when remote_pr.enabled is true, dry_run is false, approval plus PR-body evidence are verified, branch rules pass, and duplicate checks pass.");
     println!("Git commands do not checkout, switch, push, pull, fetch, merge, rebase, or run shell commands.");
 }
 
@@ -2145,9 +3217,17 @@ fn print_pack_help() {
     println!("  gadgets pack list [--project <path>]");
     println!("  gadgets pack show [--project <path>] <pack>");
     println!("  gadgets pack validate [--project <path>] [--strict] [pack]");
+    println!("  gadgets pack trust check [--project <path>] <pack>");
+    println!("  gadgets pack trust roots [--project <path>]");
+    println!("  gadgets pack trust preview [--project <path>] [--mode safe|team|production] <pack>");
+    println!("  gadgets pack trust signature [--project <path>] <pack>");
     println!();
     println!("Packs are loaded from .gadgets/packs/<pack>/pack.yaml when present, then built-in pack manifests.");
     println!("validate checks pack metadata plus declared Gadget manifests; --strict treats missing Gadget manifests as errors.");
+    println!("trust check reports built-in/local/signature metadata status and writes diagnostic evidence/audit; it does not enforce signatures or mutate trust roots.");
+    println!("trust roots reports configured local trust-root metadata and writes diagnostic evidence/audit; it does not verify signatures or mutate trust roots.");
+    println!("trust preview consumes signature diagnostics to report future Safe/Team/Production policy outcomes and writes evidence/audit; it does not enforce signatures or block pack loading.");
+    println!("trust signature validates metadata, verifies Ed25519 signatures when signed metadata and trust roots are available, and writes diagnostic evidence/audit without enforcing pack loading.");
 }
 
 fn print_ledger_help() {

@@ -97,7 +97,7 @@ gadgets git status [--project <path>]
 
 ## Known gaps to carry forward
 
-- [ ] Rust toolchain validation still needed externally
+- [x] Historical item superseded: Rust validation passed at Step 22 commit c5fbd78
 - [ ] Approval expiry format/enforcement not fully locked
 - [ ] Patch apply remains intentionally narrow
 - [ ] Evidence failure after writes needs future hardening

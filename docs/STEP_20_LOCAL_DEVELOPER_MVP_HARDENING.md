@@ -111,7 +111,7 @@ Current limitation:
 
 ## Validation status
 
-Cargo, rustc, and rustfmt are unavailable in this environment, so Rust validation was not run here.
+Historical checkpoint note: Rust validation was not run at this step. Superseded by Step 22: full Rust validation passed at commit c5fbd78.
 
 Run externally:
 
@@ -142,7 +142,7 @@ cargo build --release
 
 ## Recommended next step
 
-Run external Rust validation and apply bounded fixes only.
+Historical checkpoint note: Step 22 later completed external Rust validation and bounded fixes at commit c5fbd78.
 
 After validation passes, the next design step should be either:
 

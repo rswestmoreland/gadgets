@@ -9,7 +9,7 @@ Best single answer: about 35-40 percent of the full Gadgets Framework roadmap is
 More useful breakdown:
 
 - Core safety spine through local PR body generation and Step 20 hardening: 100% at checkpoint/code level.
-- Local Developer MVP: 92-94% complete, pending external Rust validation and polish.
+- Local Developer MVP: historical estimate. Step 22 later completed external Rust validation at commit c5fbd78; remaining work is alpha packaging and polish.
 - Full multi-pack roadmap: 35-40% complete.
 
 ## Completed local Developer milestones
@@ -88,7 +88,7 @@ gadgets git pr body [--project <path>] <approval-request-id> [--test-run <run-id
 - [ ] Documentation Gadget executable behavior is not implemented.
 - [ ] Dependency Gadget behavior is not implemented.
 
-## Required external validation
+## Historical validation request superseded by Step 22
 
 ```bash
 cargo fmt --check
@@ -100,7 +100,7 @@ cargo build --release
 
 ## Recommended next step
 
-Run the external Rust validation flow and make bounded fixes only.
+Historical note: Step 22 later completed the external Rust validation flow and bounded fixes at commit c5fbd78.
 
 After validation is green, choose between:
 

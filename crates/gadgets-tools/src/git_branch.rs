@@ -5,6 +5,7 @@
 //! merge, rebase, create PRs, run shell commands, call model providers, apply
 //! patches, or perform host/server administration.
 
+use crate::redaction::{sanitize_bytes, DEFAULT_CAPTURE_BYTES, RedactionConfig};
 use gadgets_core::{ActionRequest, ActionTarget, CapabilityName, DecisionKind, GadgetManifest};
 use gadgets_evidence::{
     create_observe_bundle, default_runs_root, EvidenceError, EvidenceTextArtifact,
@@ -23,7 +24,6 @@ use std::time::Instant;
 const DEFAULT_ZONE: &str = "local_repo";
 const GIT_BRANCH_CREATE_CAPABILITY: &str = "git.branch.create";
 const GIT_BRANCH_CREATE_TOOL: &str = "git.branch.create";
-const MAX_CAPTURE_BYTES: usize = 262_144;
 const MAX_BRANCH_NAME_BYTES: usize = 128;
 
 #[derive(Debug)]
@@ -534,45 +534,14 @@ fn display_exit_code(value: Option<i32>) -> String {
 }
 
 fn sanitize_output(bytes: &[u8]) -> String {
-    let text = String::from_utf8_lossy(bytes);
-    let redacted = redact_secret_like_lines(&text);
-    truncate_output(&redacted)
-}
-
-fn redact_secret_like_lines(input: &str) -> String {
-    let mut out = String::new();
-    for line in input.lines() {
-        let lower = line.to_ascii_lowercase();
-        if lower.contains(".env")
-            || lower.contains("password")
-            || lower.contains("secret")
-            || lower.contains("token")
-            || lower.contains("api_key")
-            || lower.contains("apikey")
-            || lower.contains("credential")
-            || lower.contains(".pem")
-            || lower.contains(".key")
-        {
-            out.push_str("[redacted secret-like git branch line]\n");
-        } else {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    out
-}
-
-fn truncate_output(input: &str) -> String {
-    if input.len() <= MAX_CAPTURE_BYTES {
-        return input.to_string();
-    }
-    let mut end = MAX_CAPTURE_BYTES;
-    while !input.is_char_boundary(end) {
-        end -= 1;
-    }
-    let mut out = input[..end].to_string();
-    out.push_str("\n[output truncated by Gadgets Git branch provider]\n");
-    out
+    sanitize_bytes(
+        bytes,
+        RedactionConfig {
+            max_bytes: DEFAULT_CAPTURE_BYTES,
+            redacted_line: "[redacted secret-like git branch line]",
+            truncated_notice: "\n[output truncated by Gadgets Git Branch]\n",
+        },
+    )
 }
 
 fn decision_kind_as_str(decision: &DecisionKind) -> &'static str {

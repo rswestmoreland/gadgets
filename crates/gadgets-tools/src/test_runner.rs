@@ -5,6 +5,7 @@
 //! commands from model output, apply patches, run Git or PR actions, or perform
 //! host/server administration.
 
+use crate::redaction::{sanitize_bytes, DEFAULT_CAPTURE_BYTES, RedactionConfig};
 use gadgets_core::{ActionRequest, ActionTarget, CapabilityName, DecisionKind, GadgetManifest};
 use gadgets_evidence::{
     create_observe_bundle, default_runs_root, EvidenceError, EvidenceTextArtifact,
@@ -26,7 +27,6 @@ const DEFAULT_ZONE: &str = "local_repo";
 const TEST_RUN_CAPABILITY: &str = "test.run";
 const TEST_RUN_TOOL: &str = "test.run";
 const DEFAULT_TIMEOUT_SECONDS: u64 = 300;
-const MAX_CAPTURE_BYTES: usize = 262_144;
 
 #[derive(Debug)]
 pub enum TestRunError {
@@ -520,42 +520,14 @@ fn execute_command(
 }
 
 fn sanitize_output(bytes: &[u8]) -> String {
-    let text = String::from_utf8_lossy(bytes);
-    let redacted = redact_secret_like_lines(&text);
-    truncate_output(&redacted)
-}
-
-fn redact_secret_like_lines(input: &str) -> String {
-    let mut out = String::new();
-    for line in input.lines() {
-        let lower = line.to_ascii_lowercase();
-        if lower.contains("password")
-            || lower.contains("secret")
-            || lower.contains("token")
-            || lower.contains("api_key")
-            || lower.contains("apikey")
-            || lower.contains("credential")
-        {
-            out.push_str("[redacted secret-like output line]\n");
-        } else {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    out
-}
-
-fn truncate_output(input: &str) -> String {
-    if input.len() <= MAX_CAPTURE_BYTES {
-        return input.to_string();
-    }
-    let mut end = MAX_CAPTURE_BYTES;
-    while !input.is_char_boundary(end) {
-        end -= 1;
-    }
-    let mut out = input[..end].to_string();
-    out.push_str("\n[output truncated by Gadgets Test Runner]\n");
-    out
+    sanitize_bytes(
+        bytes,
+        RedactionConfig {
+            max_bytes: DEFAULT_CAPTURE_BYTES,
+            redacted_line: "[redacted secret-like output line]",
+            truncated_notice: "\n[output truncated by Gadgets Test Runner]\n",
+        },
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

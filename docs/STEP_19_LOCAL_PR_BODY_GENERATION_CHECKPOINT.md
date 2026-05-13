@@ -56,7 +56,7 @@ The Step 19 evidence bundle includes PR title, PR body, approval verification, p
 - YAML parse check will be performed for changed YAML files at packaging time.
 - Path-length scan will be performed at packaging time.
 
-Cargo validation was not run because the Rust toolchain is unavailable in this environment.
+Historical checkpoint note: Cargo validation was not run at this step. Superseded by Step 22: full Rust validation passed at commit c5fbd78.
 
 ## External validation required
 

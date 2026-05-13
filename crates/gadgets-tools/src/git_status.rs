@@ -5,6 +5,7 @@
 //! shell, create branches, create commits, push remotes, create PRs, call model
 //! providers, apply patches, or perform host/server administration.
 
+use crate::redaction::{sanitize_bytes, DEFAULT_CAPTURE_BYTES, RedactionConfig};
 use gadgets_core::{ActionRequest, ActionTarget, CapabilityName, DecisionKind, GadgetManifest};
 use gadgets_evidence::{
     create_observe_bundle, default_runs_root, EvidenceError, EvidenceTextArtifact,
@@ -23,7 +24,6 @@ use std::time::Instant;
 const DEFAULT_ZONE: &str = "local_repo";
 const GIT_STATUS_CAPABILITY: &str = "git.status";
 const GIT_STATUS_TOOL: &str = "git.status";
-const MAX_CAPTURE_BYTES: usize = 262_144;
 
 #[derive(Debug)]
 pub enum GitStatusError {
@@ -445,45 +445,14 @@ fn count_status_entries(stdout: &str) -> usize {
 }
 
 fn sanitize_output(bytes: &[u8]) -> String {
-    let text = String::from_utf8_lossy(bytes);
-    let redacted = redact_secret_like_lines(&text);
-    truncate_output(&redacted)
-}
-
-fn redact_secret_like_lines(input: &str) -> String {
-    let mut out = String::new();
-    for line in input.lines() {
-        let lower = line.to_ascii_lowercase();
-        if lower.contains(".env")
-            || lower.contains("password")
-            || lower.contains("secret")
-            || lower.contains("token")
-            || lower.contains("api_key")
-            || lower.contains("apikey")
-            || lower.contains("credential")
-            || lower.contains(".pem")
-            || lower.contains(".key")
-        {
-            out.push_str("[redacted secret-like git status line]\n");
-        } else {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    out
-}
-
-fn truncate_output(input: &str) -> String {
-    if input.len() <= MAX_CAPTURE_BYTES {
-        return input.to_string();
-    }
-    let mut end = MAX_CAPTURE_BYTES;
-    while !input.is_char_boundary(end) {
-        end -= 1;
-    }
-    let mut out = input[..end].to_string();
-    out.push_str("\n[output truncated by Gadgets Git status provider]\n");
-    out
+    sanitize_bytes(
+        bytes,
+        RedactionConfig {
+            max_bytes: DEFAULT_CAPTURE_BYTES,
+            redacted_line: "[redacted secret-like git status line]",
+            truncated_notice: "\n[output truncated by Gadgets Git Status]\n",
+        },
+    )
 }
 
 fn decision_kind_as_str(decision: &DecisionKind) -> &'static str {

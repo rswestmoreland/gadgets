@@ -201,7 +201,7 @@ Validation note: this checklist reflects implemented source behavior at checkpoi
 
 ## Known gaps to carry forward
 
-- [ ] Rust toolchain validation still needed externally.
+- [x] Historical item superseded: Rust validation passed at Step 22 commit c5fbd78.
 - [ ] Test Runner does not provide OS-level sandboxing around launched commands.
 - [ ] Test output redaction is first-pass only and not a complete secret scanner.
 - [ ] Approval expiry format/enforcement not fully locked.

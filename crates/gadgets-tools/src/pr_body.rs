@@ -5,6 +5,7 @@
 //! shell commands, call model providers, apply patches, run tests, or perform
 //! host/server administration.
 
+use crate::redaction::{redact_one_line, sanitize_text, RedactionConfig};
 use gadgets_approval::{
     read_approval, read_request, verify_approval, ApprovalError, ApprovalRecord,
     ApprovalRequestRecord,
@@ -773,26 +774,18 @@ fn format_optional_evidence(evidence: Option<&ReferencedEvidence>) -> String {
 }
 
 fn one_line(input: &str) -> String {
-    input
-        .lines()
-        .next()
-        .unwrap_or_default()
-        .chars()
-        .take(240)
-        .collect()
+    redact_one_line(input, "[redacted secret-like evidence summary]", 240)
 }
 
 fn truncate_body(input: &str) -> String {
-    if input.len() <= MAX_BODY_BYTES {
-        return input.to_string();
-    }
-    let mut end = MAX_BODY_BYTES;
-    while !input.is_char_boundary(end) {
-        end -= 1;
-    }
-    let mut out = input[..end].to_string();
-    out.push_str("\n\n[PR body truncated by Gadgets local PR body generator]\n");
-    out
+    sanitize_text(
+        input,
+        RedactionConfig {
+            max_bytes: MAX_BODY_BYTES,
+            redacted_line: "[redacted secret-like PR body line]",
+            truncated_notice: "\n\n[PR body truncated by Gadgets local PR body generator]\n",
+        },
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

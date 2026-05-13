@@ -136,6 +136,8 @@ impl Default for GitConfig {
 pub struct RemotePrConfig {
     #[serde(default)]
     pub enabled: bool,
+    #[serde(default = "default_remote_pr_dry_run")]
+    pub dry_run: bool,
     #[serde(default = "default_remote_pr_provider")]
     pub provider: String,
     #[serde(default)]
@@ -148,18 +150,28 @@ pub struct RemotePrConfig {
     pub token_env: String,
     #[serde(default = "default_remote_pr_base_branch")]
     pub default_base_branch: String,
+    #[serde(default = "default_remote_pr_allowed_base_branches")]
+    pub allowed_base_branches: Vec<String>,
+    #[serde(default = "default_remote_pr_allowed_head_prefixes")]
+    pub allowed_head_prefixes: Vec<String>,
+    #[serde(default = "default_remote_pr_duplicate_strategy")]
+    pub duplicate_strategy: String,
 }
 
 impl Default for RemotePrConfig {
     fn default() -> Self {
         Self {
             enabled: false,
+            dry_run: true,
             provider: default_remote_pr_provider(),
             owner: String::new(),
             repo: String::new(),
             api_base: default_remote_pr_api_base(),
             token_env: default_remote_pr_token_env(),
             default_base_branch: default_remote_pr_base_branch(),
+            allowed_base_branches: default_remote_pr_allowed_base_branches(),
+            allowed_head_prefixes: default_remote_pr_allowed_head_prefixes(),
+            duplicate_strategy: default_remote_pr_duplicate_strategy(),
         }
     }
 }
@@ -308,6 +320,10 @@ pub fn valid_test_command_name(input: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
 }
 
+fn default_remote_pr_dry_run() -> bool {
+    true
+}
+
 fn default_remote_pr_provider() -> String {
     "github".to_string()
 }
@@ -322,6 +338,22 @@ fn default_remote_pr_token_env() -> String {
 
 fn default_remote_pr_base_branch() -> String {
     "main".to_string()
+}
+
+fn default_remote_pr_allowed_base_branches() -> Vec<String> {
+    vec!["main".to_string()]
+}
+
+fn default_remote_pr_allowed_head_prefixes() -> Vec<String> {
+    vec![
+        "feature/".to_string(),
+        "fix/".to_string(),
+        "docs/".to_string(),
+    ]
+}
+
+fn default_remote_pr_duplicate_strategy() -> String {
+    "fail".to_string()
 }
 
 fn default_protected_branches() -> Vec<String> {
@@ -381,6 +413,58 @@ fn validate_remote_pr_config(config: &RemotePrConfig) -> Result<(), ConfigError>
         ));
     }
     if config.enabled {
+        if config.allowed_base_branches.is_empty() {
+            return Err(ConfigError::InvalidGitConfig(
+                "remote_pr.allowed_base_branches must not be empty when remote PR creation is enabled".to_string(),
+            ));
+        }
+        if config.allowed_head_prefixes.is_empty() {
+            return Err(ConfigError::InvalidGitConfig(
+                "remote_pr.allowed_head_prefixes must not be empty when remote PR creation is enabled".to_string(),
+            ));
+        }
+        if !config
+            .allowed_base_branches
+            .iter()
+            .any(|branch| branch == &config.default_base_branch)
+        {
+            return Err(ConfigError::InvalidGitConfig(
+                "remote_pr.default_base_branch must be present in remote_pr.allowed_base_branches when remote PR creation is enabled".to_string(),
+            ));
+        }
+    }
+    let mut base_branches = std::collections::BTreeSet::new();
+    for branch in &config.allowed_base_branches {
+        if !base_branches.insert(branch.clone()) {
+            return Err(ConfigError::InvalidGitConfig(format!(
+                "duplicate remote_pr.allowed_base_branches entry: {branch}"
+            )));
+        }
+        if !valid_git_branch_fragment(branch) {
+            return Err(ConfigError::InvalidGitConfig(format!(
+                "invalid remote_pr.allowed_base_branches entry: {branch}"
+            )));
+        }
+    }
+    let mut head_prefixes = std::collections::BTreeSet::new();
+    for prefix in &config.allowed_head_prefixes {
+        if !head_prefixes.insert(prefix.clone()) {
+            return Err(ConfigError::InvalidGitConfig(format!(
+                "duplicate remote_pr.allowed_head_prefixes entry: {prefix}"
+            )));
+        }
+        if !valid_git_branch_prefix(prefix) {
+            return Err(ConfigError::InvalidGitConfig(format!(
+                "invalid remote_pr.allowed_head_prefixes entry: {prefix}"
+            )));
+        }
+    }
+    if config.duplicate_strategy != "fail" && config.duplicate_strategy != "reuse" {
+        return Err(ConfigError::InvalidGitConfig(
+            "remote_pr.duplicate_strategy must be fail or reuse".to_string(),
+        ));
+    }
+    if config.enabled {
         if !valid_remote_repo_component(&config.owner) {
             return Err(ConfigError::InvalidGitConfig(
                 "remote_pr.owner must be configured when remote PR creation is enabled".to_string(),
@@ -420,6 +504,17 @@ fn valid_protected_branch_pattern(input: &str) -> bool {
         return !prefix.is_empty() && valid_git_branch_fragment(prefix);
     }
     valid_git_branch_fragment(input)
+}
+
+fn valid_git_branch_prefix(input: &str) -> bool {
+    input.ends_with('/')
+        && input.len() > 1
+        && !input.starts_with('/')
+        && !input.contains("//")
+        && input
+            .trim_end_matches('/')
+            .split('/')
+            .all(valid_git_branch_fragment)
 }
 
 fn valid_git_branch_fragment(input: &str) -> bool {
@@ -736,6 +831,20 @@ git:
         assert_eq!(config.git.remote_pr.provider, "github");
         assert_eq!(config.git.remote_pr.token_env, "GITHUB_TOKEN");
         assert_eq!(config.git.remote_pr.default_base_branch, "main");
+        assert!(config.git.remote_pr.dry_run);
+        assert_eq!(
+            config.git.remote_pr.allowed_base_branches,
+            vec!["main".to_string()]
+        );
+        assert_eq!(
+            config.git.remote_pr.allowed_head_prefixes,
+            vec![
+                "feature/".to_string(),
+                "fix/".to_string(),
+                "docs/".to_string()
+            ]
+        );
+        assert_eq!(config.git.remote_pr.duplicate_strategy, "fail");
     }
 
     #[test]
