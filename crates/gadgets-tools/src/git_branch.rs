@@ -10,7 +10,9 @@ use gadgets_evidence::{
     create_observe_bundle, default_runs_root, EvidenceError, EvidenceTextArtifact,
     EvidenceWriteRequest,
 };
-use gadgets_ledger::{append_event, default_ledger_path, new_audit_event, with_target, LedgerError};
+use gadgets_ledger::{
+    append_event, default_ledger_path, new_audit_event, with_target, LedgerError,
+};
 use gadgets_policy::{evaluate_action, PolicyContext, RuntimeMode};
 use std::error::Error;
 use std::fmt;
@@ -46,7 +48,9 @@ impl fmt::Display for GitBranchError {
             Self::PolicyDenied(reason) => write!(f, "git branch create denied by policy: {reason}"),
             Self::InvalidProjectRoot(path) => write!(f, "invalid project root: {}", path.display()),
             Self::InvalidBranchName(reason) => write!(f, "invalid branch name: {reason}"),
-            Self::ProtectedBranch(branch) => write!(f, "branch name is protected by config: {branch}"),
+            Self::ProtectedBranch(branch) => {
+                write!(f, "branch name is protected by config: {branch}")
+            }
         }
     }
 }
@@ -137,7 +141,9 @@ pub fn run_git_branch_create(
     request: GitBranchCreateRequest,
 ) -> Result<GitBranchCreateReport, GitBranchError> {
     if !project_root.exists() || !project_root.is_dir() {
-        return Err(GitBranchError::InvalidProjectRoot(project_root.to_path_buf()));
+        return Err(GitBranchError::InvalidProjectRoot(
+            project_root.to_path_buf(),
+        ));
     }
 
     let project_root = project_root.canonicalize()?;
@@ -287,13 +293,33 @@ pub fn run_git_branch_create(
     };
     evidence_request.assumptions = build_assumptions();
     evidence_request.extra_artifacts = vec![
-        EvidenceTextArtifact::new("git_command", "git_command.txt", git_command_artifact(&request.branch_name)),
-        EvidenceTextArtifact::new("branch_name", "branch_name.txt", format!("{}\n", request.branch_name)),
-        EvidenceTextArtifact::new("protected_branches", "protected_branches.txt", request.protected_branches.join("\n")),
+        EvidenceTextArtifact::new(
+            "git_command",
+            "git_command.txt",
+            git_command_artifact(&request.branch_name),
+        ),
+        EvidenceTextArtifact::new(
+            "branch_name",
+            "branch_name.txt",
+            format!("{}\n", request.branch_name),
+        ),
+        EvidenceTextArtifact::new(
+            "protected_branches",
+            "protected_branches.txt",
+            request.protected_branches.join("\n"),
+        ),
         EvidenceTextArtifact::new("stdout", "stdout.txt", capture.stdout.clone()),
         EvidenceTextArtifact::new("stderr", "stderr.txt", capture.stderr.clone()),
-        EvidenceTextArtifact::new("exit_status", "exit_status.txt", format_exit_status(&capture)),
-        EvidenceTextArtifact::new("duration", "duration.txt", format!("duration_ms={}\n", capture.duration_ms)),
+        EvidenceTextArtifact::new(
+            "exit_status",
+            "exit_status.txt",
+            format_exit_status(&capture),
+        ),
+        EvidenceTextArtifact::new(
+            "duration",
+            "duration.txt",
+            format!("duration_ms={}\n", capture.duration_ms),
+        ),
         EvidenceTextArtifact::new(
             "policy_decision",
             "policy_decision.txt",
@@ -343,7 +369,10 @@ pub fn run_git_branch_create(
     })
 }
 
-fn execute_git_branch_create(project_root: &Path, branch_name: &str) -> Result<GitCapture, GitBranchError> {
+fn execute_git_branch_create(
+    project_root: &Path,
+    branch_name: &str,
+) -> Result<GitCapture, GitBranchError> {
     let start = Instant::now();
     let output = Command::new("git")
         .args(["branch", branch_name])
@@ -362,6 +391,7 @@ fn execute_git_branch_create(project_root: &Path, branch_name: &str) -> Result<G
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_audit(
     ledger_path: &Path,
     request: &GitBranchCreateRequest,
@@ -397,7 +427,8 @@ fn append_audit(
 fn validate_branch_name(input: &str) -> Result<(), GitBranchError> {
     if input.trim() != input || input.is_empty() {
         return Err(GitBranchError::InvalidBranchName(
-            "branch name must be non-empty and must not contain leading or trailing whitespace".to_string(),
+            "branch name must be non-empty and must not contain leading or trailing whitespace"
+                .to_string(),
         ));
     }
     if input.len() > MAX_BRANCH_NAME_BYTES {
@@ -450,13 +481,20 @@ fn branch_matches_protected(branch_name: &str, protected_branches: &[String]) ->
 }
 
 fn build_summary(request: &GitBranchCreateRequest, capture: &GitCapture) -> String {
-    let status = if capture.passed { "completed" } else { "failed" };
+    let status = if capture.passed {
+        "completed"
+    } else {
+        "failed"
+    };
     let mut out = String::new();
     out.push_str("Local Git branch creation completed.\n\n");
     out.push_str("Command: git branch <validated-branch-name>\n");
     out.push_str(&format!("Branch: {}\n", request.branch_name));
     out.push_str(&format!("Status: {}\n", status));
-    out.push_str(&format!("Exit code: {}\n", display_exit_code(capture.exit_code)));
+    out.push_str(&format!(
+        "Exit code: {}\n",
+        display_exit_code(capture.exit_code)
+    ));
     out.push_str(&format!("Duration ms: {}\n\n", capture.duration_ms));
     out.push_str("No checkout, switch, stage, commit, push, pull, fetch, merge, rebase, PR, provider tool, patch, shell, Linux admin, database, cloud, or deployment action was executed by this provider.\n");
     out
@@ -482,7 +520,10 @@ fn git_command_artifact(branch_name: &str) -> String {
 fn format_exit_status(capture: &GitCapture) -> String {
     let mut out = String::new();
     out.push_str(&format!("passed={}\n", capture.passed));
-    out.push_str(&format!("exit_code={}\n", display_exit_code(capture.exit_code)));
+    out.push_str(&format!(
+        "exit_code={}\n",
+        display_exit_code(capture.exit_code)
+    ));
     out
 }
 

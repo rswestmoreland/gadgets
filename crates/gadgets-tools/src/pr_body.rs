@@ -14,7 +14,9 @@ use gadgets_evidence::{
     bundle_path_for_run, create_observe_bundle, default_runs_root, read_bundle, summarize_bundle,
     EvidenceError, EvidenceTextArtifact, EvidenceWriteRequest,
 };
-use gadgets_ledger::{append_event, default_ledger_path, new_audit_event, with_target, LedgerError};
+use gadgets_ledger::{
+    append_event, default_ledger_path, new_audit_event, with_target, LedgerError,
+};
 use gadgets_policy::{evaluate_action, PolicyContext, RuntimeMode};
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -54,13 +56,17 @@ impl fmt::Display for GitPrBodyError {
             Self::Evidence(err) => write!(f, "PR body evidence error: {err}"),
             Self::Capability(err) => write!(f, "PR body capability error: {err}"),
             Self::PolicyDenied(reason) => write!(f, "PR body denied by policy: {reason}"),
-            Self::ApprovalNotVerified(errors) => write!(f, "approval verification failed: {}", errors.join("; ")),
+            Self::ApprovalNotVerified(errors) => {
+                write!(f, "approval verification failed: {}", errors.join("; "))
+            }
             Self::ApprovalRecordMissing(id) => write!(f, "approval record missing for {id}"),
             Self::InvalidProjectRoot(path) => write!(f, "invalid project root: {}", path.display()),
             Self::InvalidRunId(value) => write!(f, "invalid run id: {value}"),
             Self::InvalidTitle(reason) => write!(f, "invalid PR title: {reason}"),
             Self::InvalidPatch(reason) => write!(f, "invalid approved patch: {reason}"),
-            Self::InvalidPath(path) => write!(f, "approved patch path is not safe for PR body: {path}"),
+            Self::InvalidPath(path) => {
+                write!(f, "approved patch path is not safe for PR body: {path}")
+            }
         }
     }
 }
@@ -182,7 +188,9 @@ pub fn run_git_pr_body(
     request: GitPrBodyRequest,
 ) -> Result<GitPrBodyReport, GitPrBodyError> {
     if !project_root.exists() || !project_root.is_dir() {
-        return Err(GitPrBodyError::InvalidProjectRoot(project_root.to_path_buf()));
+        return Err(GitPrBodyError::InvalidProjectRoot(
+            project_root.to_path_buf(),
+        ));
     }
 
     validate_optional_run_id(request.test_run_id.as_deref())?;
@@ -222,8 +230,10 @@ pub fn run_git_pr_body(
         return Err(GitPrBodyError::ApprovalNotVerified(verification.errors));
     }
 
-    let approval = read_approval(&project_root, &request.approval_request_id)?
-        .ok_or_else(|| GitPrBodyError::ApprovalRecordMissing(request.approval_request_id.clone()))?;
+    let approval =
+        read_approval(&project_root, &request.approval_request_id)?.ok_or_else(|| {
+            GitPrBodyError::ApprovalRecordMissing(request.approval_request_id.clone())
+        })?;
     if approval.status != "approved" {
         return Err(GitPrBodyError::ApprovalNotVerified(vec![format!(
             "approval status is {}",
@@ -250,7 +260,8 @@ pub fn run_git_pr_body(
             path: Some(".".to_string()),
             resource: Some(format!("approval:{}", request.approval_request_id)),
         },
-        reason: "Generate local pull request body text from verified approval and evidence.".to_string(),
+        reason: "Generate local pull request body text from verified approval and evidence."
+            .to_string(),
     };
     let context = PolicyContext {
         mode: request.runtime_mode,
@@ -326,7 +337,13 @@ pub fn run_git_pr_body(
         request.run_id.clone(),
         gadget.metadata.name.clone(),
         request.created_at.clone(),
-        build_summary(&request, &title, &patch_summary, test_evidence.as_ref(), commit_evidence.as_ref()),
+        build_summary(
+            &request,
+            &title,
+            &patch_summary,
+            test_evidence.as_ref(),
+            commit_evidence.as_ref(),
+        ),
     );
     evidence_request.status = "completed".to_string();
     evidence_request.assumptions = build_assumptions();
@@ -338,9 +355,21 @@ pub fn run_git_pr_body(
             "approval_verification.txt",
             format_approval_verification(&request, &approval_request, &approval),
         ),
-        EvidenceTextArtifact::new("patch_summary", "patch_summary.txt", format_patch_summary(&patch_summary)),
-        EvidenceTextArtifact::new("test_evidence", "test_evidence.txt", format_optional_evidence(test_evidence.as_ref())),
-        EvidenceTextArtifact::new("commit_evidence", "commit_evidence.txt", format_optional_evidence(commit_evidence.as_ref())),
+        EvidenceTextArtifact::new(
+            "patch_summary",
+            "patch_summary.txt",
+            format_patch_summary(&patch_summary),
+        ),
+        EvidenceTextArtifact::new(
+            "test_evidence",
+            "test_evidence.txt",
+            format_optional_evidence(test_evidence.as_ref()),
+        ),
+        EvidenceTextArtifact::new(
+            "commit_evidence",
+            "commit_evidence.txt",
+            format_optional_evidence(commit_evidence.as_ref()),
+        ),
         EvidenceTextArtifact::new(
             "policy_decision",
             "policy_decision.txt",
@@ -432,7 +461,8 @@ fn validate_optional_title(value: Option<&str>) -> Result<(), GitPrBodyError> {
     };
     if value.trim() != value || value.is_empty() {
         return Err(GitPrBodyError::InvalidTitle(
-            "title must be non-empty and must not contain leading or trailing whitespace".to_string(),
+            "title must be non-empty and must not contain leading or trailing whitespace"
+                .to_string(),
         ));
     }
     if value.len() > MAX_TITLE_BYTES {
@@ -568,11 +598,20 @@ fn build_pr_body(
     out.push_str("## Summary\n\n");
     out.push_str("This PR applies a Gadgets-approved local patch. The PR body was generated locally from verified approval and evidence artifacts.\n\n");
     out.push_str("## Scope\n\n");
-    out.push_str(&format!("- Approval request: `{}`\n", request.approval_request_id));
-    out.push_str(&format!("- Source patch run: `{}`\n", approval_request.target.run_id));
+    out.push_str(&format!(
+        "- Approval request: `{}`\n",
+        request.approval_request_id
+    ));
+    out.push_str(&format!(
+        "- Source patch run: `{}`\n",
+        approval_request.target.run_id
+    ));
     out.push_str(&format!("- Approved by: `{}`\n", approval.approved_by));
     out.push_str(&format!("- Scope hash: `{}`\n", approval.scope_hash));
-    out.push_str(&format!("- Patch SHA-256: `{}`\n", approval_request.target.patch_sha256));
+    out.push_str(&format!(
+        "- Patch SHA-256: `{}`\n",
+        approval_request.target.patch_sha256
+    ));
     out.push_str(&format!("- Files changed: {}\n", patch.files.len()));
     out.push_str(&format!("- Approximate additions: {}\n", patch.additions));
     out.push_str(&format!("- Approximate deletions: {}\n\n", patch.deletions));
@@ -609,14 +648,29 @@ fn build_pr_body(
     out.push_str("- No remote Git provider, push, fetch, shell, provider SDK tool call, Linux admin, database, cloud, or deployment action was executed.\n");
     out.push_str("- Reviewers should inspect the patch evidence, approval record, test output, and local commit evidence before creating a remote PR.\n\n");
     out.push_str("## Evidence References\n\n");
-    out.push_str(&format!("- Approval request evidence: `.gadgets/approvals/{}/request.yaml`\n", request.approval_request_id));
-    out.push_str(&format!("- Approval record: `.gadgets/approvals/{}/approval.yaml`\n", request.approval_request_id));
-    out.push_str(&format!("- Patch evidence bundle: `.gadgets/runs/{}/evidence/bundle.yaml`\n", approval_request.target.run_id));
+    out.push_str(&format!(
+        "- Approval request evidence: `.gadgets/approvals/{}/request.yaml`\n",
+        request.approval_request_id
+    ));
+    out.push_str(&format!(
+        "- Approval record: `.gadgets/approvals/{}/approval.yaml`\n",
+        request.approval_request_id
+    ));
+    out.push_str(&format!(
+        "- Patch evidence bundle: `.gadgets/runs/{}/evidence/bundle.yaml`\n",
+        approval_request.target.run_id
+    ));
     if let Some(evidence) = test_evidence {
-        out.push_str(&format!("- Test evidence bundle: `{}`\n", evidence.bundle_path.display()));
+        out.push_str(&format!(
+            "- Test evidence bundle: `{}`\n",
+            evidence.bundle_path.display()
+        ));
     }
     if let Some(evidence) = commit_evidence {
-        out.push_str(&format!("- Commit evidence bundle: `{}`\n", evidence.bundle_path.display()));
+        out.push_str(&format!(
+            "- Commit evidence bundle: `{}`\n",
+            evidence.bundle_path.display()
+        ));
     }
     out.push_str("\n---\n\nGenerated by Gadgets Framework local PR body generator.\n");
     out
@@ -631,11 +685,20 @@ fn build_summary(
 ) -> String {
     let mut out = String::new();
     out.push_str("Local PR body generated.\n\n");
-    out.push_str(&format!("Approval request: {}\n", request.approval_request_id));
+    out.push_str(&format!(
+        "Approval request: {}\n",
+        request.approval_request_id
+    ));
     out.push_str(&format!("Title: {}\n", title));
     out.push_str(&format!("Files summarized: {}\n", patch.files.len()));
-    out.push_str(&format!("Test evidence: {}\n", evidence_label(test_evidence)));
-    out.push_str(&format!("Commit evidence: {}\n", evidence_label(commit_evidence)));
+    out.push_str(&format!(
+        "Test evidence: {}\n",
+        evidence_label(test_evidence)
+    ));
+    out.push_str(&format!(
+        "Commit evidence: {}\n",
+        evidence_label(commit_evidence)
+    ));
     out.push_str("Remote PR creation: false\n");
     out.push_str("Remote provider call: false\n");
     out
@@ -663,11 +726,17 @@ fn format_approval_verification(
 ) -> String {
     let mut out = String::new();
     out.push_str("approval_verified=true\n");
-    out.push_str(&format!("approval_request_id={}\n", request.approval_request_id));
+    out.push_str(&format!(
+        "approval_request_id={}\n",
+        request.approval_request_id
+    ));
     out.push_str(&format!("approval_id={}\n", approval.approval_id));
     out.push_str(&format!("approved_by={}\n", approval.approved_by));
     out.push_str(&format!("scope_hash={}\n", approval.scope_hash));
-    out.push_str(&format!("patch_sha256={}\n", approval_request.target.patch_sha256));
+    out.push_str(&format!(
+        "patch_sha256={}\n",
+        approval_request.target.patch_sha256
+    ));
     out.push_str("pr_body_scope=local_markdown_only\n");
     out
 }
@@ -726,6 +795,7 @@ fn truncate_body(input: &str) -> String {
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_audit(
     ledger_path: &Path,
     request: &GitPrBodyRequest,
@@ -781,7 +851,8 @@ mod tests {
 
     #[test]
     fn rejects_parent_patch_paths() {
-        let patch = "diff --git a/../bad b/../bad\n--- a/../bad\n+++ b/../bad\n@@ -0,0 +1 @@\n+bad\n";
+        let patch =
+            "diff --git a/../bad b/../bad\n--- a/../bad\n+++ b/../bad\n@@ -0,0 +1 @@\n+bad\n";
         assert!(summarize_patch(patch).is_err());
     }
 

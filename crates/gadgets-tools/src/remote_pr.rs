@@ -14,7 +14,9 @@ use gadgets_evidence::{
     bundle_path_for_run, create_observe_bundle, default_runs_root, read_bundle, EvidenceError,
     EvidenceTextArtifact, EvidenceWriteRequest,
 };
-use gadgets_ledger::{append_event, default_ledger_path, new_audit_event, with_target, LedgerError};
+use gadgets_ledger::{
+    append_event, default_ledger_path, new_audit_event, with_target, LedgerError,
+};
 use gadgets_policy::{evaluate_action, PolicyContext, RuntimeMode};
 use serde_json::{json, Value};
 use std::env;
@@ -62,15 +64,22 @@ impl fmt::Display for GitRemotePrError {
             Self::Evidence(err) => write!(f, "remote PR evidence error: {err}"),
             Self::Capability(err) => write!(f, "remote PR capability error: {err}"),
             Self::PolicyDenied(reason) => write!(f, "remote PR denied by policy: {reason}"),
-            Self::ApprovalNotVerified(errors) => write!(f, "approval verification failed: {}", errors.join("; ")),
+            Self::ApprovalNotVerified(errors) => {
+                write!(f, "approval verification failed: {}", errors.join("; "))
+            }
             Self::ApprovalRecordMissing(id) => write!(f, "approval record missing for {id}"),
             Self::InvalidProjectRoot(path) => write!(f, "invalid project root: {}", path.display()),
             Self::InvalidConfig(reason) => write!(f, "invalid remote PR config: {reason}"),
             Self::InvalidRunId(value) => write!(f, "invalid PR body run id: {value}"),
             Self::InvalidTitle(reason) => write!(f, "invalid remote PR title: {reason}"),
             Self::InvalidBranch(reason) => write!(f, "invalid remote PR branch: {reason}"),
-            Self::MissingPrBody(run_id) => write!(f, "PR body evidence is missing required artifacts for run {run_id}"),
-            Self::MissingTokenEnv(name) => write!(f, "remote PR token environment variable is not set: {name}"),
+            Self::MissingPrBody(run_id) => write!(
+                f,
+                "PR body evidence is missing required artifacts for run {run_id}"
+            ),
+            Self::MissingTokenEnv(name) => {
+                write!(f, "remote PR token environment variable is not set: {name}")
+            }
             Self::Http(reason) => write!(f, "remote PR HTTP request failed: {reason}"),
             Self::InvalidResponse(reason) => write!(f, "remote PR response was invalid: {reason}"),
         }
@@ -225,7 +234,9 @@ pub fn run_git_remote_pr_create(
     request: GitRemotePrRequest,
 ) -> Result<GitRemotePrReport, GitRemotePrError> {
     if !project_root.exists() || !project_root.is_dir() {
-        return Err(GitRemotePrError::InvalidProjectRoot(project_root.to_path_buf()));
+        return Err(GitRemotePrError::InvalidProjectRoot(
+            project_root.to_path_buf(),
+        ));
     }
 
     validate_config(&request.config)?;
@@ -272,8 +283,10 @@ pub fn run_git_remote_pr_create(
         return Err(GitRemotePrError::ApprovalNotVerified(verification.errors));
     }
 
-    let approval = read_approval(&project_root, &request.approval_request_id)?
-        .ok_or_else(|| GitRemotePrError::ApprovalRecordMissing(request.approval_request_id.clone()))?;
+    let approval =
+        read_approval(&project_root, &request.approval_request_id)?.ok_or_else(|| {
+            GitRemotePrError::ApprovalRecordMissing(request.approval_request_id.clone())
+        })?;
     if approval.status != "approved" {
         return Err(GitRemotePrError::ApprovalNotVerified(vec![format!(
             "approval status is {}",
@@ -310,7 +323,8 @@ pub fn run_git_remote_pr_create(
                 request.config.owner, request.config.repo, request.head_branch, request.base_branch
             )),
         },
-        reason: "Create one remote pull request from verified approval and local PR body evidence.".to_string(),
+        reason: "Create one remote pull request from verified approval and local PR body evidence."
+            .to_string(),
     };
     let context = PolicyContext {
         mode: request.runtime_mode,
@@ -372,7 +386,11 @@ pub fn run_git_remote_pr_create(
         &ledger_path,
         &request,
         &mut state,
-        if capture.passed { "git.pr.create.completed" } else { "git.pr.create.failed" },
+        if capture.passed {
+            "git.pr.create.completed"
+        } else {
+            "git.pr.create.failed"
+        },
         "gadget",
         &gadget.metadata.name,
         Some(("repo", repo_target.as_str())),
@@ -397,13 +415,44 @@ pub fn run_git_remote_pr_create(
     };
     evidence_request.assumptions = build_assumptions();
     evidence_request.extra_artifacts = vec![
-        EvidenceTextArtifact::new("remote_pr_request", "remote_pr_request.txt", format_remote_request(&request, &title)),
-        EvidenceTextArtifact::new("approval_verification", "approval_verification.txt", format_approval_verification(&request, &approval_request, &approval)),
-        EvidenceTextArtifact::new("pr_body_reference", "pr_body_reference.txt", format_pr_body_reference(&request, &pr_body)),
-        EvidenceTextArtifact::new("http_status", "http_status.txt", format_http_status(&capture)),
-        EvidenceTextArtifact::new("remote_pr_response", "remote_pr_response.txt", sanitize_response(&capture.response_text)),
-        EvidenceTextArtifact::new("remote_pr_url", "remote_pr_url.txt", format!("{}\n", capture.pr_url.clone().unwrap_or_else(|| "none".to_string()))),
-        EvidenceTextArtifact::new("duration", "duration.txt", format!("duration_ms={}\n", capture.duration_ms)),
+        EvidenceTextArtifact::new(
+            "remote_pr_request",
+            "remote_pr_request.txt",
+            format_remote_request(&request, &title),
+        ),
+        EvidenceTextArtifact::new(
+            "approval_verification",
+            "approval_verification.txt",
+            format_approval_verification(&request, &approval_request, &approval),
+        ),
+        EvidenceTextArtifact::new(
+            "pr_body_reference",
+            "pr_body_reference.txt",
+            format_pr_body_reference(&request, &pr_body),
+        ),
+        EvidenceTextArtifact::new(
+            "http_status",
+            "http_status.txt",
+            format_http_status(&capture),
+        ),
+        EvidenceTextArtifact::new(
+            "remote_pr_response",
+            "remote_pr_response.txt",
+            sanitize_response(&capture.response_text),
+        ),
+        EvidenceTextArtifact::new(
+            "remote_pr_url",
+            "remote_pr_url.txt",
+            format!(
+                "{}\n",
+                capture.pr_url.clone().unwrap_or_else(|| "none".to_string())
+            ),
+        ),
+        EvidenceTextArtifact::new(
+            "duration",
+            "duration.txt",
+            format!("duration_ms={}\n", capture.duration_ms),
+        ),
         EvidenceTextArtifact::new(
             "policy_decision",
             "policy_decision.txt",
@@ -532,7 +581,8 @@ fn validate_optional_title(value: Option<&str>) -> Result<(), GitRemotePrError> 
     };
     if value.trim() != value || value.is_empty() {
         return Err(GitRemotePrError::InvalidTitle(
-            "title must be non-empty and must not contain leading or trailing whitespace".to_string(),
+            "title must be non-empty and must not contain leading or trailing whitespace"
+                .to_string(),
         ));
     }
     if value.len() > MAX_TITLE_BYTES {
@@ -603,7 +653,10 @@ fn validate_request_for_remote_pr(request: &ApprovalRequestRecord) -> Result<(),
     Ok(())
 }
 
-fn read_pr_body_evidence(runs_root: &Path, run_id: &str) -> Result<PrBodyEvidence, GitRemotePrError> {
+fn read_pr_body_evidence(
+    runs_root: &Path,
+    run_id: &str,
+) -> Result<PrBodyEvidence, GitRemotePrError> {
     let bundle_path = bundle_path_for_run(runs_root, run_id)?;
     let bundle = read_bundle(&bundle_path)?;
     if bundle.gadget != "git.pr" || bundle.status != "completed" {
@@ -623,7 +676,8 @@ fn read_pr_body_evidence(runs_root: &Path, run_id: &str) -> Result<PrBodyEvidenc
 }
 
 fn read_token(env_name: &str) -> Result<String, GitRemotePrError> {
-    let value = env::var(env_name).map_err(|_| GitRemotePrError::MissingTokenEnv(env_name.to_string()))?;
+    let value =
+        env::var(env_name).map_err(|_| GitRemotePrError::MissingTokenEnv(env_name.to_string()))?;
     let trimmed = value.trim();
     if trimmed.is_empty() || trimmed != value {
         return Err(GitRemotePrError::MissingTokenEnv(env_name.to_string()));
@@ -662,7 +716,9 @@ fn create_github_pr(
     match response {
         Ok(resp) => {
             let status = resp.status();
-            let text = resp.into_string().map_err(|err| GitRemotePrError::Http(err.to_string()))?;
+            let text = resp
+                .into_string()
+                .map_err(|err| GitRemotePrError::Http(err.to_string()))?;
             let parsed: Result<Value, _> = serde_json::from_str(&text);
             let pr_number = parsed
                 .as_ref()
@@ -685,7 +741,9 @@ fn create_github_pr(
             })
         }
         Err(ureq::Error::Status(status, resp)) => {
-            let text = resp.into_string().unwrap_or_else(|_| "<failed to read response body>".to_string());
+            let text = resp
+                .into_string()
+                .unwrap_or_else(|_| "<failed to read response body>".to_string());
             Ok(RemotePrCapture {
                 passed: false,
                 http_status: Some(status),
@@ -699,6 +757,7 @@ fn create_github_pr(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_audit(
     ledger_path: &Path,
     request: &GitRemotePrRequest,
@@ -732,17 +791,36 @@ fn append_audit(
 }
 
 fn build_summary(request: &GitRemotePrRequest, title: &str, capture: &RemotePrCapture) -> String {
-    let status = if capture.passed { "completed" } else { "failed" };
+    let status = if capture.passed {
+        "completed"
+    } else {
+        "failed"
+    };
     let mut out = String::new();
     out.push_str("Remote pull request creation completed.\n\n");
     out.push_str(&format!("Status: {status}\n"));
-    out.push_str(&format!("Repository: {}/{}\n", request.config.owner, request.config.repo));
+    out.push_str(&format!(
+        "Repository: {}/{}\n",
+        request.config.owner, request.config.repo
+    ));
     out.push_str(&format!("Title: {title}\n"));
     out.push_str(&format!("Head branch: {}\n", request.head_branch));
     out.push_str(&format!("Base branch: {}\n", request.base_branch));
-    out.push_str(&format!("HTTP status: {}\n", display_http_status(capture.http_status)));
-    out.push_str(&format!("PR number: {}\n", capture.pr_number.map(|v| v.to_string()).unwrap_or_else(|| "none".to_string())));
-    out.push_str(&format!("PR URL: {}\n", capture.pr_url.as_deref().unwrap_or("none")));
+    out.push_str(&format!(
+        "HTTP status: {}\n",
+        display_http_status(capture.http_status)
+    ));
+    out.push_str(&format!(
+        "PR number: {}\n",
+        capture
+            .pr_number
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "none".to_string())
+    ));
+    out.push_str(&format!(
+        "PR URL: {}\n",
+        capture.pr_url.as_deref().unwrap_or("none")
+    ));
     out.push_str("\nNo Git push, fetch, pull, merge, rebase, checkout, shell, provider tool, patch apply, test, Linux admin, database, cloud, or deployment action was executed by this provider.\n");
     out
 }
@@ -761,10 +839,16 @@ fn build_assumptions() -> Vec<String> {
 fn format_remote_request(request: &GitRemotePrRequest, title: &str) -> String {
     let mut out = String::new();
     out.push_str("provider=github\n");
-    out.push_str(&format!("repository={}/{}\n", request.config.owner, request.config.repo));
+    out.push_str(&format!(
+        "repository={}/{}\n",
+        request.config.owner, request.config.repo
+    ));
     out.push_str(&format!("api_base={}\n", request.config.api_base));
     out.push_str(&format!("token_env={}\n", request.config.token_env));
-    out.push_str(&format!("approval_request_id={}\n", request.approval_request_id));
+    out.push_str(&format!(
+        "approval_request_id={}\n",
+        request.approval_request_id
+    ));
     out.push_str(&format!("pr_body_run_id={}\n", request.pr_body_run_id));
     out.push_str(&format!("head_branch={}\n", request.head_branch));
     out.push_str(&format!("base_branch={}\n", request.base_branch));
@@ -780,11 +864,17 @@ fn format_approval_verification(
 ) -> String {
     let mut out = String::new();
     out.push_str("approval_verified=true\n");
-    out.push_str(&format!("approval_request_id={}\n", request.approval_request_id));
+    out.push_str(&format!(
+        "approval_request_id={}\n",
+        request.approval_request_id
+    ));
     out.push_str(&format!("approval_id={}\n", approval.approval_id));
     out.push_str(&format!("approved_by={}\n", approval.approved_by));
     out.push_str(&format!("scope_hash={}\n", approval.scope_hash));
-    out.push_str(&format!("patch_sha256={}\n", approval_request.target.patch_sha256));
+    out.push_str(&format!(
+        "patch_sha256={}\n",
+        approval_request.target.patch_sha256
+    ));
     out.push_str("remote_pr_scope=verified_approval_and_pr_body_only\n");
     out
 }
@@ -800,14 +890,28 @@ fn format_pr_body_reference(request: &GitRemotePrRequest, pr_body: &PrBodyEviden
 fn format_http_status(capture: &RemotePrCapture) -> String {
     let mut out = String::new();
     out.push_str(&format!("passed={}\n", capture.passed));
-    out.push_str(&format!("http_status={}\n", display_http_status(capture.http_status)));
-    out.push_str(&format!("pr_number={}\n", capture.pr_number.map(|v| v.to_string()).unwrap_or_else(|| "none".to_string())));
-    out.push_str(&format!("pr_url={}\n", capture.pr_url.as_deref().unwrap_or("none")));
+    out.push_str(&format!(
+        "http_status={}\n",
+        display_http_status(capture.http_status)
+    ));
+    out.push_str(&format!(
+        "pr_number={}\n",
+        capture
+            .pr_number
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "none".to_string())
+    ));
+    out.push_str(&format!(
+        "pr_url={}\n",
+        capture.pr_url.as_deref().unwrap_or("none")
+    ));
     out
 }
 
 fn display_http_status(status: Option<u16>) -> String {
-    status.map(|value| value.to_string()).unwrap_or_else(|| "none".to_string())
+    status
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "none".to_string())
 }
 
 fn sanitize_response(input: &str) -> String {

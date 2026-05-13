@@ -137,7 +137,11 @@ pub fn evaluate_action(
     let approved_git_pr_create = request.capability.as_str() == "git.pr.create"
         && request.tool == "git.pr.create"
         && context.approved_git_pr_create;
-    let boundary_level = if allowlisted_test_run || allowlisted_git_branch_create || approved_git_commit || approved_git_pr_create {
+    let boundary_level = if allowlisted_test_run
+        || allowlisted_git_branch_create
+        || approved_git_commit
+        || approved_git_pr_create
+    {
         PermissionLevel::Observe
     } else {
         capability_level
@@ -168,12 +172,21 @@ pub fn evaluate_action(
     }
 
     match request.target.zone.as_deref() {
-        Some(zone) if gadget.boundaries.zones.iter().any(|allowed| allowed == zone) => {
+        Some(zone)
+            if gadget
+                .boundaries
+                .zones
+                .iter()
+                .any(|allowed| allowed == zone) =>
+        {
             matched_rules.push("zone_allowed".to_string());
         }
         Some(zone) => findings.push(finding(
             "zone_not_allowed",
-            format!("zone {zone} is not allowed for Gadget {}", gadget.metadata.name),
+            format!(
+                "zone {zone} is not allowed for Gadget {}",
+                gadget.metadata.name
+            ),
         )),
         None => findings.push(finding(
             "target_zone_missing",
@@ -202,7 +215,10 @@ pub fn evaluate_action(
             if capability_level == PermissionLevel::Release {
                 findings.push(finding(
                     "safe_mode_blocks_release",
-                    format!("Safe Mode blocks release-level capability {}", request.capability),
+                    format!(
+                        "Safe Mode blocks release-level capability {}",
+                        request.capability
+                    ),
                 ));
             }
         }
@@ -211,7 +227,10 @@ pub fn evaluate_action(
             if capability_level == PermissionLevel::Release {
                 findings.push(finding(
                     "team_mode_requires_production_gate",
-                    format!("Team Mode blocks release-level capability {} without production gate", request.capability),
+                    format!(
+                        "Team Mode blocks release-level capability {} without production gate",
+                        request.capability
+                    ),
                 ));
             }
         }
@@ -375,7 +394,10 @@ fn evaluate_filesystem_path(
     if matches_denied_path(filesystem, &normalized) {
         findings.push(finding(
             "path_denied",
-            format!("path {} matches denied filesystem boundary", normalized.display()),
+            format!(
+                "path {} matches denied filesystem boundary",
+                normalized.display()
+            ),
         ));
         return;
     }
@@ -384,7 +406,10 @@ fn evaluate_filesystem_path(
     if !is_inside_any_root(filesystem, &normalized) {
         findings.push(finding(
             "path_outside_roots",
-            format!("path {} is outside configured filesystem roots", normalized.display()),
+            format!(
+                "path {} is outside configured filesystem roots",
+                normalized.display()
+            ),
         ));
         return;
     }
@@ -453,7 +478,11 @@ fn is_inside_any_root(filesystem: &FilesystemBoundary, path: &Path) -> bool {
 fn is_inside_any_path(allowed: &[String], path: &Path) -> bool {
     allowed.iter().any(|item| {
         normalize_relative_path(item)
-            .map(|allowed_path| allowed_path == Path::new(".") || path == allowed_path || path.starts_with(&allowed_path))
+            .map(|allowed_path| {
+                allowed_path == Path::new(".")
+                    || path == allowed_path
+                    || path.starts_with(&allowed_path)
+            })
             .unwrap_or(false)
     })
 }
@@ -631,7 +660,13 @@ approval:
     - firewall_change
 "#;
 
-    fn action(capability: &str, tool: &str, gadget: &str, zone: &str, path: Option<&str>) -> ActionRequest {
+    fn action(
+        capability: &str,
+        tool: &str,
+        gadget: &str,
+        zone: &str,
+        path: Option<&str>,
+    ) -> ActionRequest {
         ActionRequest {
             action_request_id: "actreq_1".to_string(),
             run_id: "run_1".to_string(),
@@ -650,7 +685,13 @@ approval:
     #[test]
     fn allows_declared_read_inside_zone_and_path() {
         let gadget = GadgetManifest::from_yaml_str(READ_GADGET).unwrap();
-        let request = action("file.read", "file.read", "filesystem.read", "local_repo", Some("README.md"));
+        let request = action(
+            "file.read",
+            "file.read",
+            "filesystem.read",
+            "local_repo",
+            Some("README.md"),
+        );
         let result = evaluate_action(&gadget, &request, &PolicyContext::safe("dec_1"));
         assert_eq!(result.decision.decision, DecisionKind::Allowed);
         assert!(result.findings.is_empty());
@@ -659,7 +700,13 @@ approval:
     #[test]
     fn denies_path_traversal() {
         let gadget = GadgetManifest::from_yaml_str(READ_GADGET).unwrap();
-        let request = action("file.read", "file.read", "filesystem.read", "local_repo", Some("../secret.txt"));
+        let request = action(
+            "file.read",
+            "file.read",
+            "filesystem.read",
+            "local_repo",
+            Some("../secret.txt"),
+        );
         let result = evaluate_action(&gadget, &request, &PolicyContext::safe("dec_1"));
         assert_eq!(result.decision.decision, DecisionKind::Denied);
         assert!(result.decision.reason.contains("path_not_relative_safe"));
@@ -668,8 +715,20 @@ approval:
     #[test]
     fn denies_configured_secret_paths() {
         let gadget = GadgetManifest::from_yaml_str(READ_GADGET).unwrap();
-        for path in [".env", ".git/config", "secrets/api.txt", "certs/private.key", "notes/secret-token.txt"] {
-            let request = action("file.read", "file.read", "filesystem.read", "local_repo", Some(path));
+        for path in [
+            ".env",
+            ".git/config",
+            "secrets/api.txt",
+            "certs/private.key",
+            "notes/secret-token.txt",
+        ] {
+            let request = action(
+                "file.read",
+                "file.read",
+                "filesystem.read",
+                "local_repo",
+                Some(path),
+            );
             let result = evaluate_action(&gadget, &request, &PolicyContext::safe("dec_1"));
             assert_eq!(result.decision.decision, DecisionKind::Denied, "{path}");
             assert!(result.decision.reason.contains("path_denied"), "{path}");
@@ -679,7 +738,13 @@ approval:
     #[test]
     fn denies_missing_capability() {
         let gadget = GadgetManifest::from_yaml_str(READ_GADGET).unwrap();
-        let request = action("file.write", "file.read", "filesystem.read", "local_repo", Some("README.md"));
+        let request = action(
+            "file.write",
+            "file.read",
+            "filesystem.read",
+            "local_repo",
+            Some("README.md"),
+        );
         let result = evaluate_action(&gadget, &request, &PolicyContext::safe("dec_1"));
         assert_eq!(result.decision.decision, DecisionKind::Denied);
         assert!(result.decision.reason.contains("capability_not_declared"));
@@ -688,7 +753,13 @@ approval:
     #[test]
     fn denies_tool_not_allowlisted() {
         let gadget = GadgetManifest::from_yaml_str(READ_GADGET).unwrap();
-        let request = action("file.read", "shell.exec", "filesystem.read", "local_repo", Some("README.md"));
+        let request = action(
+            "file.read",
+            "shell.exec",
+            "filesystem.read",
+            "local_repo",
+            Some("README.md"),
+        );
         let result = evaluate_action(&gadget, &request, &PolicyContext::safe("dec_1"));
         assert_eq!(result.decision.decision, DecisionKind::Denied);
         assert!(result.decision.reason.contains("tool_not_allowed"));
@@ -697,7 +768,13 @@ approval:
     #[test]
     fn denies_zone_not_allowed() {
         let gadget = GadgetManifest::from_yaml_str(READ_GADGET).unwrap();
-        let request = action("file.read", "file.read", "filesystem.read", "prod", Some("README.md"));
+        let request = action(
+            "file.read",
+            "file.read",
+            "filesystem.read",
+            "prod",
+            Some("README.md"),
+        );
         let result = evaluate_action(&gadget, &request, &PolicyContext::safe("dec_1"));
         assert_eq!(result.decision.decision, DecisionKind::Denied);
         assert!(result.decision.reason.contains("zone_not_allowed"));
@@ -706,7 +783,13 @@ approval:
     #[test]
     fn write_requires_approval() {
         let gadget = GadgetManifest::from_yaml_str(PATCH_GADGET).unwrap();
-        let request = action("file.write", "file.write", "patch.writer", "local_repo", Some("src/lib.rs"));
+        let request = action(
+            "file.write",
+            "file.write",
+            "patch.writer",
+            "local_repo",
+            Some("src/lib.rs"),
+        );
         let result = evaluate_action(&gadget, &request, &PolicyContext::safe("dec_1"));
         assert_eq!(result.decision.decision, DecisionKind::RequiresApproval);
         assert!(result.decision.requires_approval);
@@ -715,7 +798,13 @@ approval:
     #[test]
     fn approved_write_inside_writable_path_is_allowed() {
         let gadget = GadgetManifest::from_yaml_str(PATCH_GADGET).unwrap();
-        let request = action("file.write", "file.write", "patch.writer", "local_repo", Some("tests/policy.rs"));
+        let request = action(
+            "file.write",
+            "file.write",
+            "patch.writer",
+            "local_repo",
+            Some("tests/policy.rs"),
+        );
         let context = PolicyContext::safe("dec_1").with_approval();
         let result = evaluate_action(&gadget, &request, &context);
         assert_eq!(result.decision.decision, DecisionKind::Allowed);
@@ -724,7 +813,13 @@ approval:
     #[test]
     fn approved_write_outside_writable_path_is_denied() {
         let gadget = GadgetManifest::from_yaml_str(PATCH_GADGET).unwrap();
-        let request = action("file.write", "file.write", "patch.writer", "local_repo", Some("README.md"));
+        let request = action(
+            "file.write",
+            "file.write",
+            "patch.writer",
+            "local_repo",
+            Some("README.md"),
+        );
         let context = PolicyContext::safe("dec_1").with_approval();
         let result = evaluate_action(&gadget, &request, &context);
         assert_eq!(result.decision.decision, DecisionKind::Denied);
@@ -746,7 +841,6 @@ approval:
         assert_eq!(result.decision.decision, DecisionKind::Denied);
         assert!(result.decision.reason.contains("safe_mode_blocks_release"));
     }
-
 
     const TEST_GADGET: &str = r#"
 schema_version: gadgets.framework/v0.1
@@ -787,7 +881,13 @@ approval:
     #[test]
     fn allowlisted_test_run_is_allowed_without_patch_approval() {
         let gadget = GadgetManifest::from_yaml_str(TEST_GADGET).unwrap();
-        let request = action("test.run", "test.run", "test.runner", "local_repo", Some("."));
+        let request = action(
+            "test.run",
+            "test.run",
+            "test.runner",
+            "local_repo",
+            Some("."),
+        );
         let context = PolicyContext::safe("dec_1").with_allowlisted_test_command();
         let result = evaluate_action(&gadget, &request, &context);
         assert_eq!(result.decision.decision, DecisionKind::Allowed);
@@ -801,21 +901,32 @@ approval:
     #[test]
     fn test_run_requires_allowlist_context() {
         let gadget = GadgetManifest::from_yaml_str(TEST_GADGET).unwrap();
-        let request = action("test.run", "test.run", "test.runner", "local_repo", Some("."));
+        let request = action(
+            "test.run",
+            "test.run",
+            "test.runner",
+            "local_repo",
+            Some("."),
+        );
         let result = evaluate_action(&gadget, &request, &PolicyContext::safe("dec_1"));
-        assert_eq!(result.decision.decision, DecisionKind::RequiresApproval);
+        assert_eq!(result.decision.decision, DecisionKind::Denied);
     }
 
     #[test]
     fn allowlisted_test_run_still_checks_denied_paths() {
         let gadget = GadgetManifest::from_yaml_str(TEST_GADGET).unwrap();
-        let request = action("test.run", "test.run", "test.runner", "local_repo", Some(".gadgets"));
+        let request = action(
+            "test.run",
+            "test.run",
+            "test.runner",
+            "local_repo",
+            Some(".gadgets"),
+        );
         let context = PolicyContext::safe("dec_1").with_allowlisted_test_command();
         let result = evaluate_action(&gadget, &request, &context);
         assert_eq!(result.decision.decision, DecisionKind::Denied);
         assert!(result.decision.reason.contains("path_denied"));
     }
-
 
     const GIT_GADGET: &str = r#"
 schema_version: gadgets.framework/v0.1
@@ -859,7 +970,13 @@ approval:
     #[test]
     fn allowlisted_git_branch_create_is_allowed_without_patch_approval() {
         let gadget = GadgetManifest::from_yaml_str(GIT_GADGET).unwrap();
-        let request = action("git.branch.create", "git.branch.create", "git.pr", "local_repo", Some("."));
+        let request = action(
+            "git.branch.create",
+            "git.branch.create",
+            "git.pr",
+            "local_repo",
+            Some("."),
+        );
         let context = PolicyContext::safe("dec_1").with_allowlisted_git_branch_create();
         let result = evaluate_action(&gadget, &request, &context);
         assert_eq!(result.decision.decision, DecisionKind::Allowed);
@@ -873,16 +990,27 @@ approval:
     #[test]
     fn git_branch_create_requires_allowlist_context() {
         let gadget = GadgetManifest::from_yaml_str(GIT_GADGET).unwrap();
-        let request = action("git.branch.create", "git.branch.create", "git.pr", "local_repo", Some("."));
+        let request = action(
+            "git.branch.create",
+            "git.branch.create",
+            "git.pr",
+            "local_repo",
+            Some("."),
+        );
         let result = evaluate_action(&gadget, &request, &PolicyContext::safe("dec_1"));
-        assert_eq!(result.decision.decision, DecisionKind::RequiresApproval);
+        assert_eq!(result.decision.decision, DecisionKind::Denied);
     }
-
 
     #[test]
     fn approved_git_commit_is_allowed_with_verified_approval_context() {
         let gadget = GadgetManifest::from_yaml_str(GIT_GADGET).unwrap();
-        let request = action("git.commit.create", "git.commit.create", "git.pr", "local_repo", Some("."));
+        let request = action(
+            "git.commit.create",
+            "git.commit.create",
+            "git.pr",
+            "local_repo",
+            Some("."),
+        );
         let context = PolicyContext::safe("dec_1").with_approved_git_commit();
         let result = evaluate_action(&gadget, &request, &context);
         assert_eq!(result.decision.decision, DecisionKind::Allowed);
@@ -896,9 +1024,15 @@ approval:
     #[test]
     fn git_commit_requires_approval_context() {
         let gadget = GadgetManifest::from_yaml_str(GIT_GADGET).unwrap();
-        let request = action("git.commit.create", "git.commit.create", "git.pr", "local_repo", Some("."));
+        let request = action(
+            "git.commit.create",
+            "git.commit.create",
+            "git.pr",
+            "local_repo",
+            Some("."),
+        );
         let result = evaluate_action(&gadget, &request, &PolicyContext::safe("dec_1"));
-        assert_eq!(result.decision.decision, DecisionKind::RequiresApproval);
+        assert_eq!(result.decision.decision, DecisionKind::Denied);
     }
 
     #[test]

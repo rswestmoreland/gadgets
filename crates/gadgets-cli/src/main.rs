@@ -6,33 +6,40 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use config::{
+    ensure_supported_provider, load_project_config, valid_test_command_name,
+    RemotePrConfig as CliRemotePrConfig,
+};
 use gadgets_approval::{
-    approve_request, create_patch_approval_request, patch_approval_request_id,
-    read_approval, read_request, verify_approval, PatchApprovalRequestInput,
+    approve_request, create_patch_approval_request, patch_approval_request_id, read_approval,
+    read_request, verify_approval, PatchApprovalRequestInput,
 };
 use gadgets_evidence::{
     bundle_path_for_run, create_observe_bundle, default_runs_root, summarize_bundle,
     verify_bundle_hash, EvidenceWriteRequest,
 };
-use gadgets_ledger::{append_event, default_ledger_path, new_audit_event, summarize_events, verify_ledger, with_target};
+use gadgets_ledger::{
+    append_event, default_ledger_path, new_audit_event, summarize_events, verify_ledger,
+    with_target,
+};
 use gadgets_provider::{
     AnthropicProvider, MockProvider, ModelProvider, OpenAiProvider, ProviderError, ProviderRequest,
     ProviderResponseStatus,
 };
-use config::{ensure_supported_provider, load_project_config, valid_test_command_name, RemotePrConfig as CliRemotePrConfig};
+use gadgets_tools::{
+    run_filesystem_read, run_git_branch_create, run_git_commit_approved_patch, run_git_pr_body,
+    run_git_remote_pr_create, run_git_status, run_patch_apply, run_patch_plan, run_test_command,
+    FilesystemReadRequest, GitBranchCreateRequest, GitCommitRequest, GitPrBodyRequest,
+    GitRemotePrRequest, GitStatusRequest, PatchApplyRequest, PatchPlanRequest,
+    RemotePrProviderConfig, TestCommandSpec, TestRunRequest,
+};
+use init::init_project;
 use manifest_loader::{
     ensure_pack_installed, gadget_manifest_available, load_gadget_manifest,
     load_installed_pack_manifests, load_pack_manifest, validate_installed_packs,
-    validate_pack_tree, PackValidationReport, DEVELOPER_PACK, FILESYSTEM_READ_GADGET, PATCH_WRITER_GADGET,
-    TEST_RUNNER_GADGET, GIT_PR_GADGET,
+    validate_pack_tree, PackValidationReport, DEVELOPER_PACK, FILESYSTEM_READ_GADGET,
+    GIT_PR_GADGET, PATCH_WRITER_GADGET, TEST_RUNNER_GADGET,
 };
-use gadgets_tools::{
-    run_filesystem_read, run_git_branch_create, run_git_commit_approved_patch, run_git_status,
-    run_patch_apply, run_patch_plan, run_test_command, run_git_pr_body, run_git_remote_pr_create, FilesystemReadRequest,
-    GitBranchCreateRequest, GitCommitRequest, GitPrBodyRequest, GitRemotePrRequest, GitStatusRequest,
-    PatchApplyRequest, PatchPlanRequest, RemotePrProviderConfig, TestCommandSpec, TestRunRequest,
-};
-use init::init_project;
 
 fn main() {
     let mut args = env::args().skip(1);
@@ -43,10 +50,16 @@ fn main() {
 
     match command.as_str() {
         "init" => {
-            let target = args.next().map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+            let target = args
+                .next()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("."));
             match init_project(&target) {
                 Ok(report) => {
-                    println!("Initialized Gadgets project state at {}", report.gadgets_dir.display());
+                    println!(
+                        "Initialized Gadgets project state at {}",
+                        report.gadgets_dir.display()
+                    );
                     println!("Mode: safe");
                     println!("Provider: mock");
                     println!("File writes require approval: yes");
@@ -55,7 +68,10 @@ fn main() {
                     if !report.created_anything() {
                         println!("No changes needed; project was already initialized.");
                     }
-                    println!("Review {} before enabling additional packs or providers.", report.gadgets_dir.join("config.yaml").display());
+                    println!(
+                        "Review {} before enabling additional packs or providers.",
+                        report.gadgets_dir.join("config.yaml").display()
+                    );
                 }
                 Err(err) => {
                     eprintln!("failed to initialize Gadgets project state: {err}");
@@ -80,8 +96,6 @@ fn main() {
         }
     }
 }
-
-
 
 fn handle_ask(args: Vec<String>) {
     let (project_root, prompt_parts) = parse_ask_args(args);
@@ -129,20 +143,22 @@ fn handle_ask(args: Vec<String>) {
             std::process::exit(1);
         }
     };
-    let loaded_filesystem = match load_gadget_manifest(&project_root, &loaded_pack, FILESYSTEM_READ_GADGET) {
-        Ok(value) => value,
-        Err(err) => {
-            eprintln!("failed to load Filesystem Read Gadget manifest: {err}");
-            std::process::exit(1);
-        }
-    };
-    let loaded_patch_writer = match load_gadget_manifest(&project_root, &loaded_pack, PATCH_WRITER_GADGET) {
-        Ok(value) => value,
-        Err(err) => {
-            eprintln!("failed to load Patch Writer Gadget manifest: {err}");
-            std::process::exit(1);
-        }
-    };
+    let loaded_filesystem =
+        match load_gadget_manifest(&project_root, &loaded_pack, FILESYSTEM_READ_GADGET) {
+            Ok(value) => value,
+            Err(err) => {
+                eprintln!("failed to load Filesystem Read Gadget manifest: {err}");
+                std::process::exit(1);
+            }
+        };
+    let loaded_patch_writer =
+        match load_gadget_manifest(&project_root, &loaded_pack, PATCH_WRITER_GADGET) {
+            Ok(value) => value,
+            Err(err) => {
+                eprintln!("failed to load Patch Writer Gadget manifest: {err}");
+                std::process::exit(1);
+            }
+        };
 
     let run_id = format!("run_{}", unix_timestamp_millis());
     let created_at = unix_timestamp_label();
@@ -183,7 +199,8 @@ fn handle_ask(args: Vec<String>) {
     }
 
     if let Some(handoff) = provider_response.handoff_requests.iter().find(|handoff| {
-        handoff.to_gadget == loaded_filesystem.manifest.metadata.name && handoff.task_kind == "repo.inspect"
+        handoff.to_gadget == loaded_filesystem.manifest.metadata.name
+            && handoff.task_kind == "repo.inspect"
     }) {
         let request = FilesystemReadRequest::observe_repo(run_id, created_at, prompt.clone())
             .with_runtime_mode(runtime_mode)
@@ -202,9 +219,19 @@ fn handle_ask(args: Vec<String>) {
             "Provider profile: {} -> {} / {}",
             selected_profile.name, provider_response.provider, provider_response.model
         );
-        println!("Pack: {} ({})", loaded_pack.manifest.metadata.name, loaded_pack.source.label());
-        println!("Gadget manifest source: {}", loaded_filesystem.source.label());
-        println!("Selected handoff: {} -> {}", handoff.from_gadget, handoff.to_gadget);
+        println!(
+            "Pack: {} ({})",
+            loaded_pack.manifest.metadata.name,
+            loaded_pack.source.label()
+        );
+        println!(
+            "Gadget manifest source: {}",
+            loaded_filesystem.source.label()
+        );
+        println!(
+            "Selected handoff: {} -> {}",
+            handoff.from_gadget, handoff.to_gadget
+        );
         for note in &provider_response.safety_notes {
             println!("Safety: {note}");
         }
@@ -245,7 +272,10 @@ fn handle_ask(args: Vec<String>) {
                 provider_response.provider.clone(),
             );
 
-        println!("Gadgets {} Mode plan-only Patch Writer run", runtime_mode.as_str());
+        println!(
+            "Gadgets {} Mode plan-only Patch Writer run",
+            runtime_mode.as_str()
+        );
         println!("Project root: {}", project_root.display());
         println!("Request: {prompt}");
         println!("Coordinator: {}", provider_response.text_summary);
@@ -253,14 +283,26 @@ fn handle_ask(args: Vec<String>) {
             "Provider profile: {} -> {} / {}",
             selected_profile.name, provider_response.provider, provider_response.model
         );
-        println!("Pack: {} ({})", loaded_pack.manifest.metadata.name, loaded_pack.source.label());
-        println!("Gadget manifest source: {}", loaded_patch_writer.source.label());
-        println!("Selected handoff: {} -> {}", handoff.from_gadget, handoff.to_gadget);
+        println!(
+            "Pack: {} ({})",
+            loaded_pack.manifest.metadata.name,
+            loaded_pack.source.label()
+        );
+        println!(
+            "Gadget manifest source: {}",
+            loaded_patch_writer.source.label()
+        );
+        println!(
+            "Selected handoff: {} -> {}",
+            handoff.from_gadget, handoff.to_gadget
+        );
         for note in &provider_response.safety_notes {
             println!("Safety: {note}");
         }
         println!("Gadget: {}", loaded_patch_writer.manifest.metadata.name);
-        println!("No files will be modified. No patch will be applied. No commands will be executed.");
+        println!(
+            "No files will be modified. No patch will be applied. No commands will be executed."
+        );
         println!();
 
         match run_patch_plan(&project_root, &loaded_patch_writer.manifest, request) {
@@ -270,7 +312,14 @@ fn handle_ask(args: Vec<String>) {
                 println!("Audit events appended: {}", report.ledger_events_appended);
                 println!("Evidence: {}", report.evidence_bundle_path.display());
                 println!("Ledger: {}", report.ledger_path.display());
-                println!("Proposed patch artifact: {}/proposed.patch", report.evidence_bundle_path.parent().map(|path| path.display().to_string()).unwrap_or_else(|| ".".to_string()));
+                println!(
+                    "Proposed patch artifact: {}/proposed.patch",
+                    report
+                        .evidence_bundle_path
+                        .parent()
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_else(|| ".".to_string())
+                );
             }
             Err(err) => {
                 eprintln!("patch plan run failed: {err}");
@@ -357,7 +406,10 @@ fn handle_pack(args: Vec<String>) {
             match load_installed_pack_manifests(&project_root, &config.installed_packs) {
                 Ok(packs) => {
                     if packs.is_empty() {
-                        println!("No installed packs configured at {}", project_root.display());
+                        println!(
+                            "No installed packs configured at {}",
+                            project_root.display()
+                        );
                         return;
                     }
                     for pack in packs {
@@ -421,7 +473,8 @@ fn handle_pack(args: Vec<String>) {
             }
         }
         "validate" => {
-            let (project_root, strict, requested_pack) = parse_pack_validate_args(args[1..].to_vec());
+            let (project_root, strict, requested_pack) =
+                parse_pack_validate_args(args[1..].to_vec());
             let reports = if let Some(pack_name) = requested_pack {
                 match validate_pack_tree(&project_root, &pack_name, strict) {
                     Ok(report) => vec![report],
@@ -508,7 +561,11 @@ fn parse_pack_validate_args(args: Vec<String>) -> (PathBuf, bool, Option<String>
 }
 
 fn print_pack_validation_report(report: &PackValidationReport) {
-    let status = if report.is_valid() { "VALID" } else { "INVALID" };
+    let status = if report.is_valid() {
+        "VALID"
+    } else {
+        "INVALID"
+    };
     println!("Pack: {} [{}]", report.pack_name, status);
     println!("Source: {}", report.pack_source);
     println!("Strict mode: {}", if report.strict { "yes" } else { "no" });
@@ -577,7 +634,9 @@ fn parse_git_commit_approved_patch_args(args: Vec<String>) -> (String, String) {
             "--" => {
                 for value in iter {
                     if approval_request_id.replace(value).is_some() {
-                        eprintln!("git commit approved-patch accepts exactly one approval request id");
+                        eprintln!(
+                            "git commit approved-patch accepts exactly one approval request id"
+                        );
                         std::process::exit(2);
                     }
                 }
@@ -596,13 +655,14 @@ fn parse_git_commit_approved_patch_args(args: Vec<String>) -> (String, String) {
         print_git_help();
         std::process::exit(2);
     };
-    let commit_message = commit_message.unwrap_or_else(|| {
-        format!("Apply approved Gadgets patch {approval_request_id}")
-    });
+    let commit_message = commit_message
+        .unwrap_or_else(|| format!("Apply approved Gadgets patch {approval_request_id}"));
     (approval_request_id, commit_message)
 }
 
-fn parse_git_pr_body_args(args: Vec<String>) -> (String, Option<String>, Option<String>, Option<String>) {
+fn parse_git_pr_body_args(
+    args: Vec<String>,
+) -> (String, Option<String>, Option<String>, Option<String>) {
     let mut approval_request_id: Option<String> = None;
     let mut test_run_id: Option<String> = None;
     let mut commit_run_id: Option<String> = None;
@@ -666,8 +726,10 @@ fn parse_git_pr_body_args(args: Vec<String>) -> (String, Option<String>, Option<
     (approval_request_id, test_run_id, commit_run_id, title)
 }
 
-
-fn parse_git_pr_create_args(args: Vec<String>, default_base_branch: &str) -> (String, String, String, String, Option<String>) {
+fn parse_git_pr_create_args(
+    args: Vec<String>,
+    default_base_branch: &str,
+) -> (String, String, String, String, Option<String>) {
     let mut approval_request_id: Option<String> = None;
     let mut pr_body_run_id: Option<String> = None;
     let mut head_branch: Option<String> = None;
@@ -753,7 +815,13 @@ fn parse_git_pr_create_args(args: Vec<String>, default_base_branch: &str) -> (St
         print_git_help();
         std::process::exit(2);
     };
-    (approval_request_id, pr_body_run_id, head_branch, base_branch, title)
+    (
+        approval_request_id,
+        pr_body_run_id,
+        head_branch,
+        base_branch,
+        title,
+    )
 }
 
 fn remote_pr_provider_config(config: &CliRemotePrConfig) -> RemotePrProviderConfig {
@@ -850,7 +918,10 @@ fn handle_evidence(args: Vec<String>) {
                 print_evidence_help();
                 std::process::exit(2);
             };
-            let project_root = args.get(2).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+            let project_root = args
+                .get(2)
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("."));
             let runs_root = default_runs_root(&project_root);
             let bundle_path = match bundle_path_for_run(&runs_root, run_id) {
                 Ok(path) => path,
@@ -885,7 +956,10 @@ fn handle_evidence(args: Vec<String>) {
                 print_evidence_help();
                 std::process::exit(2);
             };
-            let project_root = args.get(2).map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+            let project_root = args
+                .get(2)
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("."));
             let runs_root = default_runs_root(&project_root);
             let bundle_path = match bundle_path_for_run(&runs_root, run_id) {
                 Ok(path) => path,
@@ -897,7 +971,10 @@ fn handle_evidence(args: Vec<String>) {
             match verify_bundle_hash(&bundle_path) {
                 Ok(true) => println!("Evidence bundle verified at {}", bundle_path.display()),
                 Ok(false) => {
-                    eprintln!("Evidence bundle verification failed at {}", bundle_path.display());
+                    eprintln!(
+                        "Evidence bundle verification failed at {}",
+                        bundle_path.display()
+                    );
                     std::process::exit(1);
                 }
                 Err(err) => {
@@ -921,7 +998,12 @@ fn handle_evidence(args: Vec<String>) {
             }
             let summary = args[3..].join(" ");
             let created_at = unix_timestamp_label();
-            let request = EvidenceWriteRequest::observe(run_id.as_str(), gadget.as_str(), created_at, summary);
+            let request = EvidenceWriteRequest::observe(
+                run_id.as_str(),
+                gadget.as_str(),
+                created_at,
+                summary,
+            );
             let runs_root = default_runs_root(Path::new("."));
             match create_observe_bundle(&runs_root, request) {
                 Ok(report) => {
@@ -944,8 +1026,6 @@ fn handle_evidence(args: Vec<String>) {
         }
     }
 }
-
-
 
 fn handle_git(args: Vec<String>) {
     let Some(subcommand) = args.first() else {
@@ -988,7 +1068,8 @@ fn handle_git(args: Vec<String>) {
                     std::process::exit(1);
                 }
             };
-            let loaded_git = match load_gadget_manifest(&project_root, &loaded_pack, GIT_PR_GADGET) {
+            let loaded_git = match load_gadget_manifest(&project_root, &loaded_pack, GIT_PR_GADGET)
+            {
                 Ok(value) => value,
                 Err(err) => {
                     eprintln!("failed to load Git Gadget manifest: {err}");
@@ -1002,7 +1083,11 @@ fn handle_git(args: Vec<String>) {
 
             println!("Gadgets {} Mode local Git status", runtime_mode.as_str());
             println!("Project root: {}", project_root.display());
-            println!("Pack: {} ({})", loaded_pack.manifest.metadata.name, loaded_pack.source.label());
+            println!(
+                "Pack: {} ({})",
+                loaded_pack.manifest.metadata.name,
+                loaded_pack.source.label()
+            );
             println!("Gadget manifest source: {}", loaded_git.source.label());
             println!("Safety: this runs a fixed local git status command selected by the runtime.");
             println!("No branch, commit, push, pull, fetch, PR, provider, patch, shell, Linux admin, database, cloud, or deployment action will run.");
@@ -1012,8 +1097,17 @@ fn handle_git(args: Vec<String>) {
                 Ok(report) => {
                     println!("Git status run: {}", report.run_id);
                     println!("Passed: {}", report.passed);
-                    println!("Exit code: {}", report.exit_code.map(|code| code.to_string()).unwrap_or_else(|| "none".to_string()));
-                    println!("Branch: {}", report.branch.unwrap_or_else(|| "unknown".to_string()));
+                    println!(
+                        "Exit code: {}",
+                        report
+                            .exit_code
+                            .map(|code| code.to_string())
+                            .unwrap_or_else(|| "none".to_string())
+                    );
+                    println!(
+                        "Branch: {}",
+                        report.branch.unwrap_or_else(|| "unknown".to_string())
+                    );
                     println!("Changed entries: {}", report.changed_entries);
                     println!("Duration ms: {}", report.duration_ms);
                     println!("Audit events appended: {}", report.ledger_events_appended);
@@ -1057,7 +1151,8 @@ fn handle_git(args: Vec<String>) {
                             std::process::exit(1);
                         }
                     };
-                    if let Err(err) = ensure_pack_installed(&config.installed_packs, DEVELOPER_PACK) {
+                    if let Err(err) = ensure_pack_installed(&config.installed_packs, DEVELOPER_PACK)
+                    {
                         eprintln!("cannot run Developer Pack Git workflow: {err}");
                         std::process::exit(1);
                     }
@@ -1069,13 +1164,14 @@ fn handle_git(args: Vec<String>) {
                             std::process::exit(1);
                         }
                     };
-                    let loaded_git = match load_gadget_manifest(&project_root, &loaded_pack, GIT_PR_GADGET) {
-                        Ok(value) => value,
-                        Err(err) => {
-                            eprintln!("failed to load Git Gadget manifest: {err}");
-                            std::process::exit(1);
-                        }
-                    };
+                    let loaded_git =
+                        match load_gadget_manifest(&project_root, &loaded_pack, GIT_PR_GADGET) {
+                            Ok(value) => value,
+                            Err(err) => {
+                                eprintln!("failed to load Git Gadget manifest: {err}");
+                                std::process::exit(1);
+                            }
+                        };
 
                     let run_id = format!("run_git_branch_{}", unix_timestamp_millis());
                     let request = GitBranchCreateRequest::create_branch(
@@ -1086,10 +1182,17 @@ fn handle_git(args: Vec<String>) {
                     )
                     .with_runtime_mode(runtime_mode);
 
-                    println!("Gadgets {} Mode protected local Git branch creation", runtime_mode.as_str());
+                    println!(
+                        "Gadgets {} Mode protected local Git branch creation",
+                        runtime_mode.as_str()
+                    );
                     println!("Project root: {}", project_root.display());
                     println!("Branch name: {branch_name}");
-                    println!("Pack: {} ({})", loaded_pack.manifest.metadata.name, loaded_pack.source.label());
+                    println!(
+                        "Pack: {} ({})",
+                        loaded_pack.manifest.metadata.name,
+                        loaded_pack.source.label()
+                    );
                     println!("Gadget manifest source: {}", loaded_git.source.label());
                     println!("Safety: this runs fixed local git branch creation after runtime branch-name and protected-branch checks.");
                     println!("No checkout, switch, stage, commit, push, pull, fetch, merge, PR, provider, patch, shell, Linux admin, database, cloud, or deployment action will run.");
@@ -1100,7 +1203,13 @@ fn handle_git(args: Vec<String>) {
                             println!("Git branch run: {}", report.run_id);
                             println!("Branch: {}", report.branch_name);
                             println!("Passed: {}", report.passed);
-                            println!("Exit code: {}", report.exit_code.map(|code| code.to_string()).unwrap_or_else(|| "none".to_string()));
+                            println!(
+                                "Exit code: {}",
+                                report
+                                    .exit_code
+                                    .map(|code| code.to_string())
+                                    .unwrap_or_else(|| "none".to_string())
+                            );
                             println!("Duration ms: {}", report.duration_ms);
                             println!("Audit events appended: {}", report.ledger_events_appended);
                             println!("Evidence: {}", report.evidence_bundle_path.display());
@@ -1131,7 +1240,8 @@ fn handle_git(args: Vec<String>) {
             match commit_subcommand.as_str() {
                 "approved-patch" => {
                     let (project_root, rest) = parse_project_option(args[2..].to_vec());
-                    let (approval_request_id, commit_message) = parse_git_commit_approved_patch_args(rest);
+                    let (approval_request_id, commit_message) =
+                        parse_git_commit_approved_patch_args(rest);
 
                     let config = match load_project_config(&project_root) {
                         Ok(value) => value,
@@ -1147,7 +1257,8 @@ fn handle_git(args: Vec<String>) {
                             std::process::exit(1);
                         }
                     };
-                    if let Err(err) = ensure_pack_installed(&config.installed_packs, DEVELOPER_PACK) {
+                    if let Err(err) = ensure_pack_installed(&config.installed_packs, DEVELOPER_PACK)
+                    {
                         eprintln!("cannot run Developer Pack Git workflow: {err}");
                         std::process::exit(1);
                     }
@@ -1159,13 +1270,14 @@ fn handle_git(args: Vec<String>) {
                             std::process::exit(1);
                         }
                     };
-                    let loaded_git = match load_gadget_manifest(&project_root, &loaded_pack, GIT_PR_GADGET) {
-                        Ok(value) => value,
-                        Err(err) => {
-                            eprintln!("failed to load Git Gadget manifest: {err}");
-                            std::process::exit(1);
-                        }
-                    };
+                    let loaded_git =
+                        match load_gadget_manifest(&project_root, &loaded_pack, GIT_PR_GADGET) {
+                            Ok(value) => value,
+                            Err(err) => {
+                                eprintln!("failed to load Git Gadget manifest: {err}");
+                                std::process::exit(1);
+                            }
+                        };
 
                     let run_id = format!("run_git_commit_{}", unix_timestamp_millis());
                     let request = GitCommitRequest::approved_patch_commit(
@@ -1177,24 +1289,47 @@ fn handle_git(args: Vec<String>) {
                     )
                     .with_runtime_mode(runtime_mode);
 
-                    println!("Gadgets {} Mode approved local Git commit", runtime_mode.as_str());
+                    println!(
+                        "Gadgets {} Mode approved local Git commit",
+                        runtime_mode.as_str()
+                    );
                     println!("Project root: {}", project_root.display());
                     println!("Approval request: {approval_request_id}");
                     println!("Commit message: {commit_message}");
-                    println!("Pack: {} ({})", loaded_pack.manifest.metadata.name, loaded_pack.source.label());
+                    println!(
+                        "Pack: {} ({})",
+                        loaded_pack.manifest.metadata.name,
+                        loaded_pack.source.label()
+                    );
                     println!("Gadget manifest source: {}", loaded_git.source.label());
                     println!("Safety: this verifies approval, rejects protected current branches, stages only approved patch files, and creates one local commit.");
                     println!("No checkout, switch, push, pull, fetch, merge, rebase, PR, provider, patch apply, shell, tests, Linux admin, database, cloud, or deployment action will run.");
                     println!();
 
-                    match run_git_commit_approved_patch(&project_root, &loaded_git.manifest, request) {
+                    match run_git_commit_approved_patch(
+                        &project_root,
+                        &loaded_git.manifest,
+                        request,
+                    ) {
                         Ok(report) => {
                             println!("Git commit run: {}", report.run_id);
                             println!("Approval request: {}", report.approval_request_id);
                             println!("Branch: {}", report.branch_name);
                             println!("Passed: {}", report.passed);
-                            println!("Exit code: {}", report.exit_code.map(|code| code.to_string()).unwrap_or_else(|| "none".to_string()));
-                            println!("Commit hash: {}", report.commit_hash.clone().unwrap_or_else(|| "none".to_string()));
+                            println!(
+                                "Exit code: {}",
+                                report
+                                    .exit_code
+                                    .map(|code| code.to_string())
+                                    .unwrap_or_else(|| "none".to_string())
+                            );
+                            println!(
+                                "Commit hash: {}",
+                                report
+                                    .commit_hash
+                                    .clone()
+                                    .unwrap_or_else(|| "none".to_string())
+                            );
                             println!("Approved files: {}", report.approved_files.len());
                             println!("Staged files: {}", report.staged_files.len());
                             println!("Duration ms: {}", report.duration_ms);
@@ -1227,7 +1362,8 @@ fn handle_git(args: Vec<String>) {
             match pr_subcommand.as_str() {
                 "body" => {
                     let (project_root, rest) = parse_project_option(args[2..].to_vec());
-                    let (approval_request_id, test_run_id, commit_run_id, title) = parse_git_pr_body_args(rest);
+                    let (approval_request_id, test_run_id, commit_run_id, title) =
+                        parse_git_pr_body_args(rest);
 
                     let config = match load_project_config(&project_root) {
                         Ok(value) => value,
@@ -1243,7 +1379,8 @@ fn handle_git(args: Vec<String>) {
                             std::process::exit(1);
                         }
                     };
-                    if let Err(err) = ensure_pack_installed(&config.installed_packs, DEVELOPER_PACK) {
+                    if let Err(err) = ensure_pack_installed(&config.installed_packs, DEVELOPER_PACK)
+                    {
                         eprintln!("cannot run Developer Pack Git workflow: {err}");
                         std::process::exit(1);
                     }
@@ -1255,13 +1392,14 @@ fn handle_git(args: Vec<String>) {
                             std::process::exit(1);
                         }
                     };
-                    let loaded_git = match load_gadget_manifest(&project_root, &loaded_pack, GIT_PR_GADGET) {
-                        Ok(value) => value,
-                        Err(err) => {
-                            eprintln!("failed to load Git Gadget manifest: {err}");
-                            std::process::exit(1);
-                        }
-                    };
+                    let loaded_git =
+                        match load_gadget_manifest(&project_root, &loaded_pack, GIT_PR_GADGET) {
+                            Ok(value) => value,
+                            Err(err) => {
+                                eprintln!("failed to load Git Gadget manifest: {err}");
+                                std::process::exit(1);
+                            }
+                        };
 
                     let run_id = format!("run_git_pr_body_{}", unix_timestamp_millis());
                     let request = GitPrBodyRequest::local_body(
@@ -1274,7 +1412,10 @@ fn handle_git(args: Vec<String>) {
                     .with_commit_run_id(commit_run_id.clone())
                     .with_title_override(title.clone());
 
-                    println!("Gadgets {} Mode local PR body generation", runtime_mode.as_str());
+                    println!(
+                        "Gadgets {} Mode local PR body generation",
+                        runtime_mode.as_str()
+                    );
                     println!("Project root: {}", project_root.display());
                     println!("Approval request: {approval_request_id}");
                     if let Some(value) = test_run_id.as_deref() {
@@ -1283,7 +1424,11 @@ fn handle_git(args: Vec<String>) {
                     if let Some(value) = commit_run_id.as_deref() {
                         println!("Commit evidence run: {value}");
                     }
-                    println!("Pack: {} ({})", loaded_pack.manifest.metadata.name, loaded_pack.source.label());
+                    println!(
+                        "Pack: {} ({})",
+                        loaded_pack.manifest.metadata.name,
+                        loaded_pack.source.label()
+                    );
                     println!("Gadget manifest source: {}", loaded_git.source.label());
                     println!("Safety: this generates local PR Markdown evidence only from verified approval and optional evidence references.");
                     println!("No remote PR, GitHub/GitLab API, push, pull, fetch, merge, rebase, provider, patch apply, test run, shell, Linux admin, database, cloud, or deployment action will run.");
@@ -1323,7 +1468,8 @@ fn handle_git(args: Vec<String>) {
                             std::process::exit(1);
                         }
                     };
-                    if let Err(err) = ensure_pack_installed(&config.installed_packs, DEVELOPER_PACK) {
+                    if let Err(err) = ensure_pack_installed(&config.installed_packs, DEVELOPER_PACK)
+                    {
                         eprintln!("cannot run Developer Pack Git workflow: {err}");
                         std::process::exit(1);
                     }
@@ -1335,13 +1481,14 @@ fn handle_git(args: Vec<String>) {
                             std::process::exit(1);
                         }
                     };
-                    let loaded_git = match load_gadget_manifest(&project_root, &loaded_pack, GIT_PR_GADGET) {
-                        Ok(value) => value,
-                        Err(err) => {
-                            eprintln!("failed to load Git Gadget manifest: {err}");
-                            std::process::exit(1);
-                        }
-                    };
+                    let loaded_git =
+                        match load_gadget_manifest(&project_root, &loaded_pack, GIT_PR_GADGET) {
+                            Ok(value) => value,
+                            Err(err) => {
+                                eprintln!("failed to load Git Gadget manifest: {err}");
+                                std::process::exit(1);
+                            }
+                        };
 
                     let run_id = format!("run_git_pr_create_{}", unix_timestamp_millis());
                     let remote_config = remote_pr_provider_config(&config.git.remote_pr);
@@ -1357,13 +1504,20 @@ fn handle_git(args: Vec<String>) {
                     .with_runtime_mode(runtime_mode)
                     .with_title_override(title.clone());
 
-                    println!("Gadgets {} Mode guarded remote PR creation", runtime_mode.as_str());
+                    println!(
+                        "Gadgets {} Mode guarded remote PR creation",
+                        runtime_mode.as_str()
+                    );
                     println!("Project root: {}", project_root.display());
                     println!("Approval request: {approval_request_id}");
                     println!("PR body run: {pr_body_run_id}");
                     println!("Head branch: {head_branch}");
                     println!("Base branch: {base_branch}");
-                    println!("Pack: {} ({})", loaded_pack.manifest.metadata.name, loaded_pack.source.label());
+                    println!(
+                        "Pack: {} ({})",
+                        loaded_pack.manifest.metadata.name,
+                        loaded_pack.source.label()
+                    );
                     println!("Gadget manifest source: {}", loaded_git.source.label());
                     println!("Safety: this requires explicit remote_pr.enabled config, verified approval, and local PR body evidence before one GitHub API call.");
                     println!("No Git push, pull, fetch, merge, rebase, checkout, switch, shell, provider tool, patch apply, test run, Linux admin, database, cloud, or deployment action will run.");
@@ -1375,9 +1529,24 @@ fn handle_git(args: Vec<String>) {
                             println!("Repository: {}", report.repository);
                             println!("Title: {}", report.title);
                             println!("Passed: {}", report.passed);
-                            println!("HTTP status: {}", report.http_status.map(|code| code.to_string()).unwrap_or_else(|| "none".to_string()));
-                            println!("PR number: {}", report.pr_number.map(|value| value.to_string()).unwrap_or_else(|| "none".to_string()));
-                            println!("PR URL: {}", report.pr_url.clone().unwrap_or_else(|| "none".to_string()));
+                            println!(
+                                "HTTP status: {}",
+                                report
+                                    .http_status
+                                    .map(|code| code.to_string())
+                                    .unwrap_or_else(|| "none".to_string())
+                            );
+                            println!(
+                                "PR number: {}",
+                                report
+                                    .pr_number
+                                    .map(|value| value.to_string())
+                                    .unwrap_or_else(|| "none".to_string())
+                            );
+                            println!(
+                                "PR URL: {}",
+                                report.pr_url.clone().unwrap_or_else(|| "none".to_string())
+                            );
                             println!("Duration ms: {}", report.duration_ms);
                             println!("Audit events appended: {}", report.ledger_events_appended);
                             println!("Evidence: {}", report.evidence_bundle_path.display());
@@ -1462,13 +1631,14 @@ fn handle_test(args: Vec<String>) {
                     std::process::exit(1);
                 }
             };
-            let loaded_test_runner = match load_gadget_manifest(&project_root, &loaded_pack, TEST_RUNNER_GADGET) {
-                Ok(value) => value,
-                Err(err) => {
-                    eprintln!("failed to load Test Runner Gadget manifest: {err}");
-                    std::process::exit(1);
-                }
-            };
+            let loaded_test_runner =
+                match load_gadget_manifest(&project_root, &loaded_pack, TEST_RUNNER_GADGET) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        eprintln!("failed to load Test Runner Gadget manifest: {err}");
+                        std::process::exit(1);
+                    }
+                };
 
             let test_run_id = format!("run_test_{}", unix_timestamp_millis());
             let command_spec = TestCommandSpec {
@@ -1477,19 +1647,28 @@ fn handle_test(args: Vec<String>) {
                 working_dir: configured_command.working_dir.clone(),
                 timeout_seconds: configured_command.timeout_seconds,
             };
-            let request = TestRunRequest::named_command(
-                test_run_id,
-                unix_timestamp_label(),
-                command_spec,
-            )
-            .with_runtime_mode(runtime_mode);
+            let request =
+                TestRunRequest::named_command(test_run_id, unix_timestamp_label(), command_spec)
+                    .with_runtime_mode(runtime_mode);
 
-            println!("Gadgets {} Mode allowlisted test run", runtime_mode.as_str());
+            println!(
+                "Gadgets {} Mode allowlisted test run",
+                runtime_mode.as_str()
+            );
             println!("Project root: {}", project_root.display());
             println!("Command name: {command_name}");
-            println!("Pack: {} ({})", loaded_pack.manifest.metadata.name, loaded_pack.source.label());
-            println!("Gadget manifest source: {}", loaded_test_runner.source.label());
-            println!("Safety: the command string is loaded from .gadgets/config.yaml by name only.");
+            println!(
+                "Pack: {} ({})",
+                loaded_pack.manifest.metadata.name,
+                loaded_pack.source.label()
+            );
+            println!(
+                "Gadget manifest source: {}",
+                loaded_test_runner.source.label()
+            );
+            println!(
+                "Safety: the command string is loaded from .gadgets/config.yaml by name only."
+            );
             println!("No model provider, patch apply, Git, PR, Linux admin, database, cloud, or deployment action will run.");
             println!();
 
@@ -1499,7 +1678,13 @@ fn handle_test(args: Vec<String>) {
                     println!("Command: {}", report.command_name);
                     println!("Passed: {}", report.passed);
                     println!("Timed out: {}", report.timed_out);
-                    println!("Exit code: {}", report.exit_code.map(|code| code.to_string()).unwrap_or_else(|| "none".to_string()));
+                    println!(
+                        "Exit code: {}",
+                        report
+                            .exit_code
+                            .map(|code| code.to_string())
+                            .unwrap_or_else(|| "none".to_string())
+                    );
                     println!("Duration ms: {}", report.duration_ms);
                     println!("Audit events appended: {}", report.ledger_events_appended);
                     println!("Evidence: {}", report.evidence_bundle_path.display());
@@ -1562,13 +1747,14 @@ fn handle_patch(args: Vec<String>) {
                     std::process::exit(1);
                 }
             };
-            let loaded_patch_writer = match load_gadget_manifest(&project_root, &loaded_pack, PATCH_WRITER_GADGET) {
-                Ok(value) => value,
-                Err(err) => {
-                    eprintln!("failed to load Patch Writer Gadget manifest: {err}");
-                    std::process::exit(1);
-                }
-            };
+            let loaded_patch_writer =
+                match load_gadget_manifest(&project_root, &loaded_pack, PATCH_WRITER_GADGET) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        eprintln!("failed to load Patch Writer Gadget manifest: {err}");
+                        std::process::exit(1);
+                    }
+                };
 
             let apply_run_id = format!("run_apply_{}", unix_timestamp_millis());
             let request = PatchApplyRequest::local_apply(
@@ -1578,11 +1764,21 @@ fn handle_patch(args: Vec<String>) {
             )
             .with_runtime_mode(runtime_mode);
 
-            println!("Gadgets {} Mode approved local patch apply", runtime_mode.as_str());
+            println!(
+                "Gadgets {} Mode approved local patch apply",
+                runtime_mode.as_str()
+            );
             println!("Project root: {}", project_root.display());
             println!("Approval request: {approval_request_id}");
-            println!("Pack: {} ({})", loaded_pack.manifest.metadata.name, loaded_pack.source.label());
-            println!("Gadget manifest source: {}", loaded_patch_writer.source.label());
+            println!(
+                "Pack: {} ({})",
+                loaded_pack.manifest.metadata.name,
+                loaded_pack.source.label()
+            );
+            println!(
+                "Gadget manifest source: {}",
+                loaded_patch_writer.source.label()
+            );
             println!("Safety: approval record, scope hash, patch hash, and path policy must all verify before any write.");
             println!("No shell commands, tests, Git actions, provider tools, PR actions, or admin actions will run.");
             println!();
@@ -1673,7 +1869,12 @@ fn handle_approval(args: Vec<String>) {
                 print_approval_help();
                 std::process::exit(2);
             };
-            match approve_request(&project_root, approval_request_id, approver, unix_timestamp_label()) {
+            match approve_request(
+                &project_root,
+                approval_request_id,
+                approver,
+                unix_timestamp_label(),
+            ) {
                 Ok(report) => {
                     let run_id = approval_request_id
                         .strip_prefix("apr_")
@@ -1752,17 +1953,25 @@ fn handle_approval(args: Vec<String>) {
             };
             match verify_approval(&project_root, approval_request_id) {
                 Ok(verification) if verification.valid => {
-                    println!("Approval record verified: {}", verification.approval_request_id);
+                    println!(
+                        "Approval record verified: {}",
+                        verification.approval_request_id
+                    );
                     println!("Request: {}", verification.request_path.display());
                     if let Some(path) = verification.approval_path {
                         println!("Approval: {}", path.display());
                     } else {
-                        println!("Approval: not present; verification should not be valid for apply.");
+                        println!(
+                            "Approval: not present; verification should not be valid for apply."
+                        );
                     }
                     println!("Patch artifact: {}", verification.patch_path.display());
                 }
                 Ok(verification) => {
-                    eprintln!("Approval verification failed: {}", verification.approval_request_id);
+                    eprintln!(
+                        "Approval verification failed: {}",
+                        verification.approval_request_id
+                    );
                     for err in verification.errors {
                         eprintln!("  - {err}");
                     }
@@ -1865,7 +2074,9 @@ fn print_help() {
     println!("  gadgets evidence show <run-id> [project-root]");
     println!("  gadgets evidence verify <run-id> [project-root]");
     println!("  gadgets evidence create-observe <run-id> <gadget> <summary>");
-    println!("  gadgets approval request-patch [--project <path>] <run-id> [--expires-at <RFC3339-UTC>]");
+    println!(
+        "  gadgets approval request-patch [--project <path>] <run-id> [--expires-at <RFC3339-UTC>]"
+    );
     println!("  gadgets approval approve [--project <path>] <approval-request-id> <approver>");
     println!("  gadgets approval show [--project <path>] <approval-request-id>");
     println!("  gadgets approval verify [--project <path>] <approval-request-id>");
@@ -1888,7 +2099,9 @@ fn print_help() {
     println!("  ledger    Show or verify the local append-only audit ledger.");
     println!("  evidence  Create, show, or verify observe-only evidence bundles.");
     println!("  approval  Create, show, approve, or verify scoped approval records.");
-    println!("  patch     Apply an approved local patch after exact approval and policy verification.");
+    println!(
+        "  patch     Apply an approved local patch after exact approval and policy verification."
+    );
     println!("  test      Run a named allowlisted test command from .gadgets/config.yaml.");
     println!("  git       Read local Git status, create protected local branches, commit approved patches, generate PR bodies, and create guarded remote PRs through fixed commands.");
     println!("  pack      List, show, or validate Gadget pack manifests.");
@@ -1902,7 +2115,9 @@ fn print_test_help() {
     println!();
     println!("Test commands must be named entries in .gadgets/config.yaml test_commands.");
     println!("The model and user prompt cannot supply raw command strings.");
-    println!("The Test Runner does not apply patches, run Git or PR actions, or perform admin actions.");
+    println!(
+        "The Test Runner does not apply patches, run Git or PR actions, or perform admin actions."
+    );
 }
 
 fn print_git_help() {
@@ -1957,12 +2172,13 @@ fn print_evidence_help() {
     println!("create-observe is a development helper and does not inspect files or call models.");
 }
 
-
 fn print_approval_help() {
     println!("Gadgets approval commands");
     println!();
     println!("Usage:");
-    println!("  gadgets approval request-patch [--project <path>] <run-id> [--expires-at <RFC3339-UTC>]");
+    println!(
+        "  gadgets approval request-patch [--project <path>] <run-id> [--expires-at <RFC3339-UTC>]"
+    );
     println!("  gadgets approval approve [--project <path>] <approval-request-id> <approver>");
     println!("  gadgets approval show [--project <path>] <approval-request-id>");
     println!("  gadgets approval verify [--project <path>] <approval-request-id>");

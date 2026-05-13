@@ -10,7 +10,9 @@ use gadgets_evidence::{
     create_observe_bundle, default_runs_root, EvidenceError, EvidenceTextArtifact,
     EvidenceWriteRequest,
 };
-use gadgets_ledger::{append_event, default_ledger_path, new_audit_event, with_target, LedgerError};
+use gadgets_ledger::{
+    append_event, default_ledger_path, new_audit_event, with_target, LedgerError,
+};
 use gadgets_policy::{evaluate_action, PolicyContext, RuntimeMode};
 use std::error::Error;
 use std::fmt;
@@ -287,12 +289,28 @@ pub fn run_test_command(
     };
     evidence_request.assumptions = build_assumptions();
     evidence_request.extra_artifacts = vec![
-        EvidenceTextArtifact::new("test_command", "test_command.txt", format_command_artifact(&request, &parsed, &working_dir_policy_path)),
+        EvidenceTextArtifact::new(
+            "test_command",
+            "test_command.txt",
+            format_command_artifact(&request, &parsed, &working_dir_policy_path),
+        ),
         EvidenceTextArtifact::new("stdout", "stdout.txt", capture.stdout.clone()),
         EvidenceTextArtifact::new("stderr", "stderr.txt", capture.stderr.clone()),
-        EvidenceTextArtifact::new("exit_status", "exit_status.txt", format_exit_status(&capture)),
-        EvidenceTextArtifact::new("duration", "duration.txt", format!("duration_ms={}\n", capture.duration_ms)),
-        EvidenceTextArtifact::new("working_dir", "working_dir.txt", format!("{}\n", working_dir_policy_path)),
+        EvidenceTextArtifact::new(
+            "exit_status",
+            "exit_status.txt",
+            format_exit_status(&capture),
+        ),
+        EvidenceTextArtifact::new(
+            "duration",
+            "duration.txt",
+            format!("duration_ms={}\n", capture.duration_ms),
+        ),
+        EvidenceTextArtifact::new(
+            "working_dir",
+            "working_dir.txt",
+            format!("{}\n", working_dir_policy_path),
+        ),
         EvidenceTextArtifact::new(
             "policy_decision",
             "policy_decision.txt",
@@ -540,6 +558,7 @@ fn truncate_output(input: &str) -> String {
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_audit(
     ledger_path: &Path,
     request: &TestRunRequest,
@@ -587,7 +606,10 @@ fn build_summary(
     out.push_str(&format!("Working dir: {}\n", working_dir));
     out.push_str(&format!("Status: {}\n", status));
     out.push_str(&format!("Timed out: {}\n", capture.timed_out));
-    out.push_str(&format!("Exit code: {}\n", display_exit_code(capture.exit_code)));
+    out.push_str(&format!(
+        "Exit code: {}\n",
+        display_exit_code(capture.exit_code)
+    ));
     out.push_str(&format!("Duration ms: {}\n\n", capture.duration_ms));
     out.push_str("No patch, Git, PR, provider tool, Linux admin, database, cloud, or deployment action was executed by this provider.\n");
     out
@@ -615,7 +637,10 @@ fn format_command_artifact(
     out.push_str(&format!("working_dir={}\n", working_dir));
     out.push_str(&format!(
         "timeout_seconds={}\n",
-        request.command.timeout_seconds.unwrap_or(DEFAULT_TIMEOUT_SECONDS)
+        request
+            .command
+            .timeout_seconds
+            .unwrap_or(DEFAULT_TIMEOUT_SECONDS)
     ));
     out
 }
@@ -624,7 +649,10 @@ fn format_exit_status(capture: &CommandCapture) -> String {
     let mut out = String::new();
     out.push_str(&format!("passed={}\n", capture.passed));
     out.push_str(&format!("timed_out={}\n", capture.timed_out));
-    out.push_str(&format!("exit_code={}\n", display_exit_code(capture.exit_code)));
+    out.push_str(&format!(
+        "exit_code={}\n",
+        display_exit_code(capture.exit_code)
+    ));
     out
 }
 

@@ -66,11 +66,7 @@ pub fn init_project(project_root: &Path) -> io::Result<InitReport> {
         gadgets_gitignore().as_bytes(),
         &mut report,
     )?;
-    create_file_if_missing(
-        &gadgets_dir.join("ledger/events.jsonl"),
-        b"",
-        &mut report,
-    )?;
+    create_file_if_missing(&gadgets_dir.join("ledger/events.jsonl"), b"", &mut report)?;
 
     Ok(report)
 }
@@ -272,7 +268,10 @@ mod tests {
 
         let second = init_project(&temp).unwrap();
         assert!(!second.created_anything());
-        assert!(second.existing_files.iter().any(|p| p.ends_with("config.yaml")));
+        assert!(second
+            .existing_files
+            .iter()
+            .any(|p| p.ends_with("config.yaml")));
 
         fs::remove_dir_all(&temp).unwrap();
     }

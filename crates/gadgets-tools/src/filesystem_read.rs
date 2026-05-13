@@ -154,7 +154,9 @@ pub fn run_filesystem_read(
     request: FilesystemReadRequest,
 ) -> Result<FilesystemReadReport, FilesystemReadError> {
     if !project_root.exists() || !project_root.is_dir() {
-        return Err(FilesystemReadError::InvalidProjectRoot(project_root.to_path_buf()));
+        return Err(FilesystemReadError::InvalidProjectRoot(
+            project_root.to_path_buf(),
+        ));
     }
 
     let project_root = project_root.canonicalize()?;
@@ -219,7 +221,14 @@ pub fn run_filesystem_read(
         "Coordinator handed off repository inspection to Filesystem Read Gadget.",
     )?;
 
-    inspect_directory(&project_root, &project_root, gadget, &request, &ledger_path, &mut state)?;
+    inspect_directory(
+        &project_root,
+        &project_root,
+        gadget,
+        &request,
+        &ledger_path,
+        &mut state,
+    )?;
 
     let summary = build_summary(&request, &state);
     let mut evidence_request = EvidenceWriteRequest::observe(
@@ -289,7 +298,9 @@ fn inspect_directory(
         let metadata = match entry.metadata() {
             Ok(value) => value,
             Err(err) => {
-                state.skipped_paths.push(format!("{rel_text}: metadata error: {err}"));
+                state
+                    .skipped_paths
+                    .push(format!("{rel_text}: metadata error: {err}"));
                 continue;
             }
         };
@@ -308,18 +319,24 @@ fn inspect_directory(
             if decision.decision.decision == DecisionKind::Allowed {
                 inspect_directory(project_root, &path, gadget, request, ledger_path, state)?;
             } else {
-                state.denied_paths.push(format!("{rel_text}: {}", decision.decision.reason));
+                state
+                    .denied_paths
+                    .push(format!("{rel_text}: {}", decision.decision.reason));
             }
             continue;
         }
 
         if !metadata.is_file() {
-            state.skipped_paths.push(format!("{rel_text}: not a regular file"));
+            state
+                .skipped_paths
+                .push(format!("{rel_text}: not a regular file"));
             continue;
         }
 
         if state.files_considered >= request.max_files {
-            state.skipped_paths.push(format!("{rel_text}: max file limit reached"));
+            state
+                .skipped_paths
+                .push(format!("{rel_text}: max file limit reached"));
             continue;
         }
 
@@ -335,7 +352,9 @@ fn inspect_directory(
         append_policy_event(ledger_path, request, state, gadget, &rel_text, &decision)?;
 
         if decision.decision.decision != DecisionKind::Allowed {
-            state.denied_paths.push(format!("{rel_text}: {}", decision.decision.reason));
+            state
+                .denied_paths
+                .push(format!("{rel_text}: {}", decision.decision.reason));
             continue;
         }
 
@@ -346,10 +365,14 @@ fn inspect_directory(
             }
             Ok(None) => {
                 state.files_read.push(rel_text.clone());
-                state.skipped_paths.push(format!("{rel_text}: binary or empty excerpt skipped"));
+                state
+                    .skipped_paths
+                    .push(format!("{rel_text}: binary or empty excerpt skipped"));
             }
             Err(err) => {
-                state.skipped_paths.push(format!("{rel_text}: read error: {err}"));
+                state
+                    .skipped_paths
+                    .push(format!("{rel_text}: read error: {err}"));
             }
         }
     }
@@ -418,6 +441,7 @@ fn append_policy_event(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_audit(
     ledger_path: &Path,
     request: &FilesystemReadRequest,
@@ -458,7 +482,10 @@ fn decision_kind_as_str(decision: &DecisionKind) -> &'static str {
     }
 }
 
-fn read_file_excerpt(path: &Path, max_file_bytes: usize) -> Result<Option<String>, FilesystemReadError> {
+fn read_file_excerpt(
+    path: &Path,
+    max_file_bytes: usize,
+) -> Result<Option<String>, FilesystemReadError> {
     let mut file = File::open(path)?;
     let mut bytes = Vec::new();
     file.by_ref()
@@ -492,11 +519,20 @@ fn build_summary(request: &FilesystemReadRequest, state: &InspectionState) -> St
         out.push_str(summary);
         out.push_str("\n\n");
     }
-    out.push_str(&format!("Runtime mode: {}\n", request.runtime_mode.as_str()));
-    out.push_str(&format!("Directories considered: {}\n", state.directories_considered));
+    out.push_str(&format!(
+        "Runtime mode: {}\n",
+        request.runtime_mode.as_str()
+    ));
+    out.push_str(&format!(
+        "Directories considered: {}\n",
+        state.directories_considered
+    ));
     out.push_str(&format!("Files considered: {}\n", state.files_considered));
     out.push_str(&format!("Files read: {}\n", state.files_read.len()));
-    out.push_str(&format!("Denied paths/actions: {}\n", state.denied_paths.len()));
+    out.push_str(&format!(
+        "Denied paths/actions: {}\n",
+        state.denied_paths.len()
+    ));
     out.push_str(&format!("Skipped paths: {}\n", state.skipped_paths.len()));
     out.push_str("\nNo files were modified. No commands were executed. Any provider output was limited to Coordinator handoff planning and still policy-checked by the runtime.\n");
     out
@@ -506,7 +542,10 @@ fn build_assumptions(request: &FilesystemReadRequest, state: &InspectionState) -
     let mut assumptions = vec![
         "This was an observe-only filesystem inspection.".to_string(),
         "The Filesystem Read Gadget did not write files or execute commands.".to_string(),
-        format!("Policy decisions were made using {} mode.", request.runtime_mode.as_str()),
+        format!(
+            "Policy decisions were made using {} mode.",
+            request.runtime_mode.as_str()
+        ),
     ];
     if state.files_considered >= request.max_files {
         assumptions.push(format!(
@@ -517,11 +556,22 @@ fn build_assumptions(request: &FilesystemReadRequest, state: &InspectionState) -
     assumptions
 }
 
-fn build_artifacts(request: &FilesystemReadRequest, state: &InspectionState) -> Vec<EvidenceTextArtifact> {
+fn build_artifacts(
+    request: &FilesystemReadRequest,
+    state: &InspectionState,
+) -> Vec<EvidenceTextArtifact> {
     let mut artifacts = vec![
         EvidenceTextArtifact::new("files_read", "files_read.txt", state.files_read.join("\n")),
-        EvidenceTextArtifact::new("skipped_paths", "skipped_paths.txt", state.skipped_paths.join("\n")),
-        EvidenceTextArtifact::new("file_excerpts", "file_excerpts.md", format_excerpts(&state.excerpts)),
+        EvidenceTextArtifact::new(
+            "skipped_paths",
+            "skipped_paths.txt",
+            state.skipped_paths.join("\n"),
+        ),
+        EvidenceTextArtifact::new(
+            "file_excerpts",
+            "file_excerpts.md",
+            format_excerpts(&state.excerpts),
+        ),
     ];
 
     if request.coordinator_summary.is_some() || request.handoff_id.is_some() {
@@ -545,17 +595,17 @@ fn format_coordinator_plan(request: &FilesystemReadRequest) -> String {
     if let Some(handoff_id) = request.handoff_id.as_deref() {
         out.push_str("Handoff: ");
         out.push_str(handoff_id);
-        out.push_str("\n");
+        out.push('\n');
     }
     if let Some(reason) = request.handoff_reason.as_deref() {
         out.push_str("Reason: ");
         out.push_str(reason);
-        out.push_str("\n");
+        out.push('\n');
     }
     if let Some(provider) = request.provider_name.as_deref() {
         out.push_str("Provider: ");
         out.push_str(provider);
-        out.push_str("\n");
+        out.push('\n');
     }
     out.push_str("\nAuthority note: the provider and Coordinator requested a handoff only; runtime policy authorized each filesystem action.\n");
     out

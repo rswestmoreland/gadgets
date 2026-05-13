@@ -44,15 +44,7 @@ impl CapabilityName {
 
         if matches!(
             action,
-            "write"
-                | "patch"
-                | "create"
-                | "update"
-                | "commit"
-                | "run"
-                | "reload"
-                | "up"
-                | "down"
+            "write" | "patch" | "create" | "update" | "commit" | "run" | "reload" | "up" | "down"
         ) {
             return PermissionLevel::Change;
         }
@@ -174,8 +166,19 @@ mod tests {
 
     #[test]
     fn estimates_risk_level() {
-        assert_eq!(CapabilityName::new("file.read").unwrap().estimated_level(), PermissionLevel::Observe);
-        assert_eq!(CapabilityName::new("file.write").unwrap().estimated_level(), PermissionLevel::Change);
-        assert_eq!(CapabilityName::new("linux.firewall.apply").unwrap().estimated_level(), PermissionLevel::Release);
+        assert_eq!(
+            CapabilityName::new("file.read").unwrap().estimated_level(),
+            PermissionLevel::Observe
+        );
+        assert_eq!(
+            CapabilityName::new("file.write").unwrap().estimated_level(),
+            PermissionLevel::Change
+        );
+        assert_eq!(
+            CapabilityName::new("linux.firewall.apply")
+                .unwrap()
+                .estimated_level(),
+            PermissionLevel::Release
+        );
     }
 }

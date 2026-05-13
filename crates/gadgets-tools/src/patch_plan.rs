@@ -9,7 +9,9 @@ use gadgets_core::{ActionRequest, ActionTarget, CapabilityName, DecisionKind, Ga
 use gadgets_evidence::{
     create_observe_bundle, default_runs_root, EvidenceTextArtifact, EvidenceWriteRequest,
 };
-use gadgets_ledger::{append_event, default_ledger_path, new_audit_event, with_target, LedgerError};
+use gadgets_ledger::{
+    append_event, default_ledger_path, new_audit_event, with_target, LedgerError,
+};
 use gadgets_policy::{evaluate_action, PolicyContext, RuntimeMode};
 use std::error::Error;
 use std::fmt;
@@ -135,7 +137,9 @@ pub fn run_patch_plan(
     request: PatchPlanRequest,
 ) -> Result<PatchPlanReport, PatchPlanError> {
     if !project_root.exists() || !project_root.is_dir() {
-        return Err(PatchPlanError::InvalidProjectRoot(project_root.to_path_buf()));
+        return Err(PatchPlanError::InvalidProjectRoot(
+            project_root.to_path_buf(),
+        ));
     }
 
     let project_root = project_root.canonicalize()?;
@@ -253,7 +257,8 @@ pub fn run_patch_plan(
         summary,
     );
     evidence_request.assumptions = build_assumptions(&request);
-    evidence_request.extra_artifacts = build_artifacts(&request, &evaluation.decision.reason, proposed_patch);
+    evidence_request.extra_artifacts =
+        build_artifacts(&request, &evaluation.decision.reason, proposed_patch);
 
     let evidence_report = create_observe_bundle(&runs_root, evidence_request)?;
     let evidence_target = evidence_report.bundle_path.to_string_lossy().to_string();
@@ -289,6 +294,7 @@ pub fn run_patch_plan(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_audit(
     ledger_path: &Path,
     request: &PatchPlanRequest,
@@ -330,7 +336,10 @@ fn build_summary(request: &PatchPlanRequest) -> String {
         out.push_str(summary);
         out.push_str("\n\n");
     }
-    out.push_str(&format!("Runtime mode: {}\n", request.runtime_mode.as_str()));
+    out.push_str(&format!(
+        "Runtime mode: {}\n",
+        request.runtime_mode.as_str()
+    ));
     out.push_str("No files were modified. No commands were executed. The proposed patch is evidence-only and must be reviewed before any future apply step.\n");
     out
 }

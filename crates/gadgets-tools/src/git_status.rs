@@ -10,7 +10,9 @@ use gadgets_evidence::{
     create_observe_bundle, default_runs_root, EvidenceError, EvidenceTextArtifact,
     EvidenceWriteRequest,
 };
-use gadgets_ledger::{append_event, default_ledger_path, new_audit_event, with_target, LedgerError};
+use gadgets_ledger::{
+    append_event, default_ledger_path, new_audit_event, with_target, LedgerError,
+};
 use gadgets_policy::{evaluate_action, PolicyContext, RuntimeMode};
 use std::error::Error;
 use std::fmt;
@@ -124,7 +126,9 @@ pub fn run_git_status(
     request: GitStatusRequest,
 ) -> Result<GitStatusReport, GitStatusError> {
     if !project_root.exists() || !project_root.is_dir() {
-        return Err(GitStatusError::InvalidProjectRoot(project_root.to_path_buf()));
+        return Err(GitStatusError::InvalidProjectRoot(
+            project_root.to_path_buf(),
+        ));
     }
 
     let project_root = project_root.canonicalize()?;
@@ -217,7 +221,11 @@ pub fn run_git_status(
         &ledger_path,
         &request,
         &mut state,
-        if capture.passed { "git.status.completed" } else { "git.status.failed" },
+        if capture.passed {
+            "git.status.completed"
+        } else {
+            "git.status.failed"
+        },
         "gadget",
         &gadget.metadata.name,
         Some(("git_worktree", ".")),
@@ -245,9 +253,24 @@ pub fn run_git_status(
         EvidenceTextArtifact::new("git_command", "git_command.txt", git_command_artifact()),
         EvidenceTextArtifact::new("git_status", "git_status.txt", capture.stdout.clone()),
         EvidenceTextArtifact::new("stderr", "stderr.txt", capture.stderr.clone()),
-        EvidenceTextArtifact::new("exit_status", "exit_status.txt", format_exit_status(&capture)),
-        EvidenceTextArtifact::new("duration", "duration.txt", format!("duration_ms={}\n", capture.duration_ms)),
-        EvidenceTextArtifact::new("branch", "branch.txt", format!("{}\n", branch.clone().unwrap_or_else(|| "unknown".to_string()))),
+        EvidenceTextArtifact::new(
+            "exit_status",
+            "exit_status.txt",
+            format_exit_status(&capture),
+        ),
+        EvidenceTextArtifact::new(
+            "duration",
+            "duration.txt",
+            format!("duration_ms={}\n", capture.duration_ms),
+        ),
+        EvidenceTextArtifact::new(
+            "branch",
+            "branch.txt",
+            format!(
+                "{}\n",
+                branch.clone().unwrap_or_else(|| "unknown".to_string())
+            ),
+        ),
         EvidenceTextArtifact::new(
             "policy_decision",
             "policy_decision.txt",
@@ -317,6 +340,7 @@ fn execute_git_status(project_root: &Path) -> Result<GitCapture, GitStatusError>
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_audit(
     ledger_path: &Path,
     request: &GitStatusRequest,
@@ -350,12 +374,19 @@ fn append_audit(
 }
 
 fn build_summary(capture: &GitCapture, branch: Option<&str>, changed_entries: usize) -> String {
-    let status = if capture.passed { "completed" } else { "failed" };
+    let status = if capture.passed {
+        "completed"
+    } else {
+        "failed"
+    };
     let mut out = String::new();
     out.push_str("Local Git status completed.\n\n");
     out.push_str("Command: git status --short --branch --untracked-files=normal\n");
     out.push_str(&format!("Status: {}\n", status));
-    out.push_str(&format!("Exit code: {}\n", display_exit_code(capture.exit_code)));
+    out.push_str(&format!(
+        "Exit code: {}\n",
+        display_exit_code(capture.exit_code)
+    ));
     out.push_str(&format!("Duration ms: {}\n", capture.duration_ms));
     out.push_str(&format!("Branch: {}\n", branch.unwrap_or("unknown")));
     out.push_str(&format!("Changed entries: {}\n\n", changed_entries));
@@ -379,7 +410,10 @@ fn git_command_artifact() -> String {
 fn format_exit_status(capture: &GitCapture) -> String {
     let mut out = String::new();
     out.push_str(&format!("passed={}\n", capture.passed));
-    out.push_str(&format!("exit_code={}\n", display_exit_code(capture.exit_code)));
+    out.push_str(&format!(
+        "exit_code={}\n",
+        display_exit_code(capture.exit_code)
+    ));
     out
 }
 
@@ -392,12 +426,22 @@ fn display_exit_code(value: Option<i32>) -> String {
 fn extract_branch(stdout: &str) -> Option<String> {
     stdout.lines().find_map(|line| {
         let branch = line.strip_prefix("## ")?;
-        Some(branch.split("...").next().unwrap_or(branch).trim().to_string())
+        Some(
+            branch
+                .split("...")
+                .next()
+                .unwrap_or(branch)
+                .trim()
+                .to_string(),
+        )
     })
 }
 
 fn count_status_entries(stdout: &str) -> usize {
-    stdout.lines().filter(|line| !line.starts_with("## ")).count()
+    stdout
+        .lines()
+        .filter(|line| !line.starts_with("## "))
+        .count()
 }
 
 fn sanitize_output(bytes: &[u8]) -> String {
@@ -464,7 +508,10 @@ mod tests {
 
     #[test]
     fn counts_changed_entries_excluding_branch_line() {
-        assert_eq!(count_status_entries("## main\n M README.md\n?? docs/new.md\n"), 2);
+        assert_eq!(
+            count_status_entries("## main\n M README.md\n?? docs/new.md\n"),
+            2
+        );
     }
 
     #[test]

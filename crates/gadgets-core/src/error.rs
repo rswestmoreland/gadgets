@@ -14,17 +14,38 @@ pub struct ValidationReportError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidationError {
-    MissingField { field: &'static str },
-    InvalidSchemaVersion { expected: &'static str, found: String },
-    InvalidKind { expected: &'static str, found: String },
-    InvalidPermissionLevel { value: String },
-    InvalidCapabilityName { value: String, reason: String },
-    UnknownCapability { value: String },
-    MutatingCapabilityWithoutBoundary { capability: String },
-    ReleaseCapabilityWithoutApproval { capability: String },
+    MissingField {
+        field: &'static str,
+    },
+    InvalidSchemaVersion {
+        expected: &'static str,
+        found: String,
+    },
+    InvalidKind {
+        expected: &'static str,
+        found: String,
+    },
+    InvalidPermissionLevel {
+        value: String,
+    },
+    InvalidCapabilityName {
+        value: String,
+        reason: String,
+    },
+    UnknownCapability {
+        value: String,
+    },
+    MutatingCapabilityWithoutBoundary {
+        capability: String,
+    },
+    ReleaseCapabilityWithoutApproval {
+        capability: String,
+    },
     EmptyCapabilities,
     EmptyPackGadgets,
-    UnknownHandoffTarget { target: String },
+    UnknownHandoffTarget {
+        target: String,
+    },
 }
 
 impl fmt::Display for GadgetCoreError {
@@ -80,10 +101,16 @@ impl fmt::Display for ValidationError {
             }
             Self::UnknownCapability { value } => write!(f, "unknown capability {value:?}"),
             Self::MutatingCapabilityWithoutBoundary { capability } => {
-                write!(f, "mutating capability {capability:?} requires explicit boundaries")
+                write!(
+                    f,
+                    "mutating capability {capability:?} requires explicit boundaries"
+                )
             }
             Self::ReleaseCapabilityWithoutApproval { capability } => {
-                write!(f, "release capability {capability:?} requires approval rules")
+                write!(
+                    f,
+                    "release capability {capability:?} requires approval rules"
+                )
             }
             Self::EmptyCapabilities => write!(f, "manifest must declare at least one capability"),
             Self::EmptyPackGadgets => write!(f, "pack must contain at least one Gadget"),

@@ -24,14 +24,19 @@ const BUILTIN_LINUX_ADMIN_OBSERVE_PACK: &str =
 const BUILTIN_LINUX_ADMIN_CHANGE_PACK: &str =
     include_str!("../../../packs/linux-admin-change/pack.yaml");
 
-const BUILTIN_COORDINATOR_GADGET: &str = include_str!("../../../packs/developer/gadgets/coordinator.yaml");
+const BUILTIN_COORDINATOR_GADGET: &str =
+    include_str!("../../../packs/developer/gadgets/coordinator.yaml");
 const BUILTIN_POLICY_GADGET: &str = include_str!("../../../packs/developer/gadgets/policy.yaml");
-const BUILTIN_AUDIT_LEDGER_GADGET: &str = include_str!("../../../packs/developer/gadgets/audit.ledger.yaml");
-const BUILTIN_APPROVAL_GADGET: &str = include_str!("../../../packs/developer/gadgets/approval.yaml");
+const BUILTIN_AUDIT_LEDGER_GADGET: &str =
+    include_str!("../../../packs/developer/gadgets/audit.ledger.yaml");
+const BUILTIN_APPROVAL_GADGET: &str =
+    include_str!("../../../packs/developer/gadgets/approval.yaml");
 const BUILTIN_FILESYSTEM_READ_GADGET: &str =
     include_str!("../../../packs/developer/gadgets/filesystem.read.yaml");
-const BUILTIN_PATCH_WRITER_GADGET: &str = include_str!("../../../packs/developer/gadgets/patch.writer.yaml");
-const BUILTIN_TEST_RUNNER_GADGET: &str = include_str!("../../../packs/developer/gadgets/test.runner.yaml");
+const BUILTIN_PATCH_WRITER_GADGET: &str =
+    include_str!("../../../packs/developer/gadgets/patch.writer.yaml");
+const BUILTIN_TEST_RUNNER_GADGET: &str =
+    include_str!("../../../packs/developer/gadgets/test.runner.yaml");
 const BUILTIN_GIT_PR_GADGET: &str = include_str!("../../../packs/developer/gadgets/git.pr.yaml");
 const BUILTIN_DOCUMENTATION_WRITER_GADGET: &str =
     include_str!("../../../packs/developer/gadgets/documentation.writer.yaml");
@@ -48,6 +53,7 @@ pub struct LoadedPackManifest {
 pub struct LoadedGadgetManifest {
     pub manifest: GadgetManifest,
     pub source: ManifestSource,
+    #[allow(dead_code)]
     pub pack_name: String,
 }
 
@@ -71,11 +77,26 @@ pub enum ManifestLoadError {
     NoInstalledPacks,
     PackNotInstalled(String),
     PackNotFound(String),
-    GadgetNotDeclared { pack: String, gadget: String },
-    GadgetNotFound { pack: String, gadget: String },
-    Io { path: PathBuf, source: std::io::Error },
-    PackParse { source: String, error: String },
-    GadgetParse { source: String, error: String },
+    GadgetNotDeclared {
+        pack: String,
+        gadget: String,
+    },
+    GadgetNotFound {
+        pack: String,
+        gadget: String,
+    },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    PackParse {
+        source: String,
+        error: String,
+    },
+    GadgetParse {
+        source: String,
+        error: String,
+    },
 }
 
 impl fmt::Display for ManifestLoadError {
@@ -146,6 +167,7 @@ pub struct GadgetValidationRow {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackValidationReport {
+    #[allow(dead_code)]
     pub pack_name: String,
     pub pack_source: String,
     pub strict: bool,
@@ -165,12 +187,18 @@ impl PackValidationReport {
     }
 }
 
-pub fn ensure_pack_installed(installed_packs: &[String], pack_name: &str) -> Result<(), ManifestLoadError> {
+pub fn ensure_pack_installed(
+    installed_packs: &[String],
+    pack_name: &str,
+) -> Result<(), ManifestLoadError> {
     if installed_packs.is_empty() {
         return Err(ManifestLoadError::NoInstalledPacks);
     }
 
-    if installed_packs.iter().any(|installed| installed == pack_name) {
+    if installed_packs
+        .iter()
+        .any(|installed| installed == pack_name)
+    {
         return Ok(());
     }
 
@@ -324,7 +352,10 @@ pub fn validate_pack_tree(
     Ok(report)
 }
 
-pub fn load_pack_manifest(project_root: &Path, pack_name: &str) -> Result<LoadedPackManifest, ManifestLoadError> {
+pub fn load_pack_manifest(
+    project_root: &Path,
+    pack_name: &str,
+) -> Result<LoadedPackManifest, ManifestLoadError> {
     let project_path = project_pack_manifest_path(project_root, pack_name);
     if project_path.exists() {
         let yaml = fs::read_to_string(&project_path).map_err(|source| ManifestLoadError::Io {
@@ -350,14 +381,23 @@ pub fn load_gadget_manifest(
     gadget_name: &str,
 ) -> Result<LoadedGadgetManifest, ManifestLoadError> {
     let pack_name = loaded_pack.manifest.metadata.name.clone();
-    if !loaded_pack.manifest.gadgets.iter().any(|gadget| gadget == gadget_name) {
+    if !loaded_pack
+        .manifest
+        .gadgets
+        .iter()
+        .any(|gadget| gadget == gadget_name)
+    {
         return Err(ManifestLoadError::GadgetNotDeclared {
             pack: pack_name,
             gadget: gadget_name.to_string(),
         });
     }
 
-    for path in project_gadget_manifest_paths(project_root, &loaded_pack.manifest.metadata.name, gadget_name) {
+    for path in project_gadget_manifest_paths(
+        project_root,
+        &loaded_pack.manifest.metadata.name,
+        gadget_name,
+    ) {
         if path.exists() {
             let yaml = fs::read_to_string(&path).map_err(|source| ManifestLoadError::Io {
                 path: path.clone(),
@@ -373,7 +413,9 @@ pub fn load_gadget_manifest(
         }
     }
 
-    if let Some((label, yaml)) = builtin_gadget_yaml(&loaded_pack.manifest.metadata.name, gadget_name) {
+    if let Some((label, yaml)) =
+        builtin_gadget_yaml(&loaded_pack.manifest.metadata.name, gadget_name)
+    {
         let source = ManifestSource::Builtin(label);
         let manifest = parse_gadget_manifest(yaml, &source)?;
         return Ok(LoadedGadgetManifest {
@@ -389,7 +431,11 @@ pub fn load_gadget_manifest(
     })
 }
 
-pub fn gadget_manifest_available(project_root: &Path, loaded_pack: &LoadedPackManifest, gadget_name: &str) -> bool {
+pub fn gadget_manifest_available(
+    project_root: &Path,
+    loaded_pack: &LoadedPackManifest,
+    gadget_name: &str,
+) -> bool {
     load_gadget_manifest(project_root, loaded_pack, gadget_name).is_ok()
 }
 
@@ -401,7 +447,11 @@ fn project_pack_manifest_path(project_root: &Path, pack_name: &str) -> PathBuf {
         .join("pack.yaml")
 }
 
-fn project_gadget_manifest_paths(project_root: &Path, pack_name: &str, gadget_name: &str) -> Vec<PathBuf> {
+fn project_gadget_manifest_paths(
+    project_root: &Path,
+    pack_name: &str,
+    gadget_name: &str,
+) -> Vec<PathBuf> {
     vec![
         project_root
             .join(".gadgets")
@@ -419,8 +469,14 @@ fn project_gadget_manifest_paths(project_root: &Path, pack_name: &str, gadget_na
 fn builtin_pack_yaml(pack_name: &str) -> Option<(&'static str, &'static str)> {
     match pack_name {
         DEVELOPER_PACK => Some(("developer/pack.yaml", BUILTIN_DEVELOPER_PACK)),
-        "linux-admin-observe" => Some(("linux-admin-observe/pack.yaml", BUILTIN_LINUX_ADMIN_OBSERVE_PACK)),
-        "linux-admin-change" => Some(("linux-admin-change/pack.yaml", BUILTIN_LINUX_ADMIN_CHANGE_PACK)),
+        "linux-admin-observe" => Some((
+            "linux-admin-observe/pack.yaml",
+            BUILTIN_LINUX_ADMIN_OBSERVE_PACK,
+        )),
+        "linux-admin-change" => Some((
+            "linux-admin-change/pack.yaml",
+            BUILTIN_LINUX_ADMIN_CHANGE_PACK,
+        )),
         _ => None,
     }
 }
@@ -431,13 +487,28 @@ fn builtin_gadget_yaml(pack_name: &str, gadget_name: &str) -> Option<(&'static s
     }
 
     match gadget_name {
-        "coordinator" => Some(("developer/gadgets/coordinator.yaml", BUILTIN_COORDINATOR_GADGET)),
+        "coordinator" => Some((
+            "developer/gadgets/coordinator.yaml",
+            BUILTIN_COORDINATOR_GADGET,
+        )),
         "policy" => Some(("developer/gadgets/policy.yaml", BUILTIN_POLICY_GADGET)),
-        "audit.ledger" => Some(("developer/gadgets/audit.ledger.yaml", BUILTIN_AUDIT_LEDGER_GADGET)),
+        "audit.ledger" => Some((
+            "developer/gadgets/audit.ledger.yaml",
+            BUILTIN_AUDIT_LEDGER_GADGET,
+        )),
         "approval" => Some(("developer/gadgets/approval.yaml", BUILTIN_APPROVAL_GADGET)),
-        FILESYSTEM_READ_GADGET => Some(("developer/gadgets/filesystem.read.yaml", BUILTIN_FILESYSTEM_READ_GADGET)),
-        PATCH_WRITER_GADGET => Some(("developer/gadgets/patch.writer.yaml", BUILTIN_PATCH_WRITER_GADGET)),
-        TEST_RUNNER_GADGET => Some(("developer/gadgets/test.runner.yaml", BUILTIN_TEST_RUNNER_GADGET)),
+        FILESYSTEM_READ_GADGET => Some((
+            "developer/gadgets/filesystem.read.yaml",
+            BUILTIN_FILESYSTEM_READ_GADGET,
+        )),
+        PATCH_WRITER_GADGET => Some((
+            "developer/gadgets/patch.writer.yaml",
+            BUILTIN_PATCH_WRITER_GADGET,
+        )),
+        TEST_RUNNER_GADGET => Some((
+            "developer/gadgets/test.runner.yaml",
+            BUILTIN_TEST_RUNNER_GADGET,
+        )),
         GIT_PR_GADGET => Some(("developer/gadgets/git.pr.yaml", BUILTIN_GIT_PR_GADGET)),
         "documentation.writer" => Some((
             "developer/gadgets/documentation.writer.yaml",
@@ -451,14 +522,20 @@ fn builtin_gadget_yaml(pack_name: &str, gadget_name: &str) -> Option<(&'static s
     }
 }
 
-fn parse_pack_manifest(yaml: &str, source: &ManifestSource) -> Result<PackManifest, ManifestLoadError> {
+fn parse_pack_manifest(
+    yaml: &str,
+    source: &ManifestSource,
+) -> Result<PackManifest, ManifestLoadError> {
     PackManifest::from_yaml_str(yaml).map_err(|error| ManifestLoadError::PackParse {
         source: source.label(),
         error: error.to_string(),
     })
 }
 
-fn parse_gadget_manifest(yaml: &str, source: &ManifestSource) -> Result<GadgetManifest, ManifestLoadError> {
+fn parse_gadget_manifest(
+    yaml: &str,
+    source: &ManifestSource,
+) -> Result<GadgetManifest, ManifestLoadError> {
     GadgetManifest::from_yaml_str(yaml).map_err(|error| ManifestLoadError::GadgetParse {
         source: source.label(),
         error: error.to_string(),
