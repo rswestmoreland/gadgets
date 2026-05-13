@@ -73,7 +73,9 @@ impl Validate for GadgetManifest {
             }
         }
 
-        if self.permission_level == PermissionLevel::Release && self.approval.required_for.is_empty() {
+        if self.permission_level == PermissionLevel::Release
+            && self.approval.required_for.is_empty()
+        {
             report.push(ValidationError::ReleaseCapabilityWithoutApproval {
                 capability: "permission_level.release".into(),
             });
@@ -189,7 +191,8 @@ approval:
 
     #[test]
     fn rejects_invalid_permission_level() {
-        let yaml = VALID_READ_GADGET.replace("permission_level: observe", "permission_level: god_mode");
+        let yaml =
+            VALID_READ_GADGET.replace("permission_level: observe", "permission_level: god_mode");
         assert!(GadgetManifest::from_yaml_str(&yaml).is_err());
     }
 

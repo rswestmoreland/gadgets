@@ -13,7 +13,9 @@ use gadgets_evidence::{
     create_observe_bundle, default_runs_root, EvidenceError, EvidenceTextArtifact,
     EvidenceWriteRequest,
 };
-use gadgets_ledger::{append_event, default_ledger_path, new_audit_event, with_target, LedgerError};
+use gadgets_ledger::{
+    append_event, default_ledger_path, new_audit_event, with_target, LedgerError,
+};
 use gadgets_policy::{evaluate_action, PolicyContext, RuntimeMode};
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -61,19 +63,41 @@ impl fmt::Display for GitCommitError {
             Self::Evidence(err) => write!(f, "git commit evidence error: {err}"),
             Self::Capability(err) => write!(f, "git commit capability error: {err}"),
             Self::PolicyDenied(reason) => write!(f, "git commit denied by policy: {reason}"),
-            Self::ApprovalNotVerified(errors) => write!(f, "approval verification failed: {}", errors.join("; ")),
+            Self::ApprovalNotVerified(errors) => {
+                write!(f, "approval verification failed: {}", errors.join("; "))
+            }
             Self::ApprovalRecordMissing(id) => write!(f, "approval record missing for {id}"),
             Self::InvalidProjectRoot(path) => write!(f, "invalid project root: {}", path.display()),
             Self::InvalidPatch(reason) => write!(f, "invalid approved patch: {reason}"),
-            Self::InvalidPath(path) => write!(f, "approved patch path is not safe for commit: {path}"),
+            Self::InvalidPath(path) => {
+                write!(f, "approved patch path is not safe for commit: {path}")
+            }
             Self::InvalidCommitMessage(reason) => write!(f, "invalid commit message: {reason}"),
-            Self::ProtectedBranch(branch) => write!(f, "current branch is protected by config: {branch}"),
-            Self::DetachedHead => write!(f, "cannot create a Gadgets commit while HEAD is detached"),
-            Self::GitCommandFailed { command, stderr } => write!(f, "git command failed ({command}): {stderr}"),
-            Self::PreexistingStagedChanges(paths) => write!(f, "preexisting staged changes must be cleared before commit: {}", paths.join(", ")),
-            Self::UnexpectedStagedFiles(paths) => write!(f, "unexpected staged files detected after staging approved paths: {}", paths.join(", ")),
-            Self::NoApprovedFiles => write!(f, "approval patch did not contain commit-safe file paths"),
-            Self::NoStagedApprovedFiles => write!(f, "no approved files had staged changes to commit"),
+            Self::ProtectedBranch(branch) => {
+                write!(f, "current branch is protected by config: {branch}")
+            }
+            Self::DetachedHead => {
+                write!(f, "cannot create a Gadgets commit while HEAD is detached")
+            }
+            Self::GitCommandFailed { command, stderr } => {
+                write!(f, "git command failed ({command}): {stderr}")
+            }
+            Self::PreexistingStagedChanges(paths) => write!(
+                f,
+                "preexisting staged changes must be cleared before commit: {}",
+                paths.join(", ")
+            ),
+            Self::UnexpectedStagedFiles(paths) => write!(
+                f,
+                "unexpected staged files detected after staging approved paths: {}",
+                paths.join(", ")
+            ),
+            Self::NoApprovedFiles => {
+                write!(f, "approval patch did not contain commit-safe file paths")
+            }
+            Self::NoStagedApprovedFiles => {
+                write!(f, "no approved files had staged changes to commit")
+            }
         }
     }
 }
@@ -177,7 +201,9 @@ pub fn run_git_commit_approved_patch(
     request: GitCommitRequest,
 ) -> Result<GitCommitReport, GitCommitError> {
     if !project_root.exists() || !project_root.is_dir() {
-        return Err(GitCommitError::InvalidProjectRoot(project_root.to_path_buf()));
+        return Err(GitCommitError::InvalidProjectRoot(
+            project_root.to_path_buf(),
+        ));
     }
 
     validate_commit_message(&request.commit_message)?;
@@ -215,8 +241,10 @@ pub fn run_git_commit_approved_patch(
         return Err(GitCommitError::ApprovalNotVerified(verification.errors));
     }
 
-    let approval = read_approval(&project_root, &request.approval_request_id)?
-        .ok_or_else(|| GitCommitError::ApprovalRecordMissing(request.approval_request_id.clone()))?;
+    let approval =
+        read_approval(&project_root, &request.approval_request_id)?.ok_or_else(|| {
+            GitCommitError::ApprovalRecordMissing(request.approval_request_id.clone())
+        })?;
     if approval.status != "approved" {
         return Err(GitCommitError::ApprovalNotVerified(vec![format!(
             "approval status is {}",
@@ -292,7 +320,8 @@ pub fn run_git_commit_approved_patch(
             path: Some(".".to_string()),
             resource: Some(format!("approval:{}", request.approval_request_id)),
         },
-        reason: "Create one local Git commit from files named by a verified approved patch.".to_string(),
+        reason: "Create one local Git commit from files named by a verified approved patch."
+            .to_string(),
     };
     let context = PolicyContext {
         mode: request.runtime_mode,
@@ -408,11 +437,19 @@ pub fn run_git_commit_approved_patch(
         &ledger_path,
         &request,
         &mut state,
-        if commit_capture.passed { "git.commit.completed" } else { "git.commit.failed" },
+        if commit_capture.passed {
+            "git.commit.completed"
+        } else {
+            "git.commit.failed"
+        },
         "gadget",
         &gadget.metadata.name,
         Some(("git_branch", &current_branch)),
-        if commit_capture.passed { "allowed" } else { "failed" },
+        if commit_capture.passed {
+            "allowed"
+        } else {
+            "failed"
+        },
         if commit_capture.passed {
             "Fixed local git commit command completed with exit status 0."
         } else {
@@ -441,19 +478,70 @@ pub fn run_git_commit_approved_patch(
     };
     evidence_request.assumptions = build_assumptions();
     evidence_request.extra_artifacts = vec![
-        EvidenceTextArtifact::new("git_command", "git_command.txt", git_command_artifact(&staged_files)),
-        EvidenceTextArtifact::new("approval_verification", "approval_verification.txt", format_approval_verification(&request, &approval_request, &approval)),
-        EvidenceTextArtifact::new("approved_files", "approved_files.txt", approved_files.join("\n")),
+        EvidenceTextArtifact::new(
+            "git_command",
+            "git_command.txt",
+            git_command_artifact(&staged_files),
+        ),
+        EvidenceTextArtifact::new(
+            "approval_verification",
+            "approval_verification.txt",
+            format_approval_verification(&request, &approval_request, &approval),
+        ),
+        EvidenceTextArtifact::new(
+            "approved_files",
+            "approved_files.txt",
+            approved_files.join("\n"),
+        ),
         EvidenceTextArtifact::new("staged_files", "staged_files.txt", staged_files.join("\n")),
-        EvidenceTextArtifact::new("current_branch", "current_branch.txt", format!("{}\n", current_branch)),
-        EvidenceTextArtifact::new("commit_message", "commit_message.txt", format!("{}\n", request.commit_message)),
-        EvidenceTextArtifact::new("commit_hash", "commit_hash.txt", format!("{}\n", commit_hash.clone().unwrap_or_else(|| "none".to_string()))),
-        EvidenceTextArtifact::new("git_add_stdout", "git_add_stdout.txt", add_capture.stdout.clone()),
-        EvidenceTextArtifact::new("git_add_stderr", "git_add_stderr.txt", add_capture.stderr.clone()),
-        EvidenceTextArtifact::new("git_commit_stdout", "git_commit_stdout.txt", commit_capture.stdout.clone()),
-        EvidenceTextArtifact::new("git_commit_stderr", "git_commit_stderr.txt", commit_capture.stderr.clone()),
-        EvidenceTextArtifact::new("exit_status", "exit_status.txt", format_exit_status(&commit_capture)),
-        EvidenceTextArtifact::new("duration", "duration.txt", format!("duration_ms={}\n", duration_ms)),
+        EvidenceTextArtifact::new(
+            "current_branch",
+            "current_branch.txt",
+            format!("{}\n", current_branch),
+        ),
+        EvidenceTextArtifact::new(
+            "commit_message",
+            "commit_message.txt",
+            format!("{}\n", request.commit_message),
+        ),
+        EvidenceTextArtifact::new(
+            "commit_hash",
+            "commit_hash.txt",
+            format!(
+                "{}\n",
+                commit_hash.clone().unwrap_or_else(|| "none".to_string())
+            ),
+        ),
+        EvidenceTextArtifact::new(
+            "git_add_stdout",
+            "git_add_stdout.txt",
+            add_capture.stdout.clone(),
+        ),
+        EvidenceTextArtifact::new(
+            "git_add_stderr",
+            "git_add_stderr.txt",
+            add_capture.stderr.clone(),
+        ),
+        EvidenceTextArtifact::new(
+            "git_commit_stdout",
+            "git_commit_stdout.txt",
+            commit_capture.stdout.clone(),
+        ),
+        EvidenceTextArtifact::new(
+            "git_commit_stderr",
+            "git_commit_stderr.txt",
+            commit_capture.stderr.clone(),
+        ),
+        EvidenceTextArtifact::new(
+            "exit_status",
+            "exit_status.txt",
+            format_exit_status(&commit_capture),
+        ),
+        EvidenceTextArtifact::new(
+            "duration",
+            "duration.txt",
+            format!("duration_ms={}\n", duration_ms),
+        ),
         EvidenceTextArtifact::new(
             "policy_decision",
             "policy_decision.txt",
@@ -532,7 +620,8 @@ fn validate_request_for_commit(request: &ApprovalRequestRecord) -> Result<(), Gi
 fn validate_commit_message(message: &str) -> Result<(), GitCommitError> {
     if message.trim() != message || message.is_empty() {
         return Err(GitCommitError::InvalidCommitMessage(
-            "message must be non-empty and must not contain leading or trailing whitespace".to_string(),
+            "message must be non-empty and must not contain leading or trailing whitespace"
+                .to_string(),
         ));
     }
     if message.len() > MAX_COMMIT_MESSAGE_BYTES {
@@ -557,7 +646,8 @@ fn extract_approved_files(patch_text: &str) -> Result<Vec<String>, GitCommitErro
         let raw_path = path.split_whitespace().next().unwrap_or(path);
         if raw_path == "/dev/null" {
             return Err(GitCommitError::InvalidPatch(
-                "file deletion patches are not supported for approved commit scaffolding".to_string(),
+                "file deletion patches are not supported for approved commit scaffolding"
+                    .to_string(),
             ));
         }
         let without_prefix = raw_path
@@ -716,6 +806,7 @@ fn branch_matches_protected(branch_name: &str, protected_branches: &[String]) ->
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_audit(
     ledger_path: &Path,
     request: &GitCommitRequest,
@@ -756,14 +847,24 @@ fn build_summary(
     commit_hash: Option<&str>,
     capture: &GitCapture,
 ) -> String {
-    let status = if capture.passed { "completed" } else { "failed" };
+    let status = if capture.passed {
+        "completed"
+    } else {
+        "failed"
+    };
     let mut out = String::new();
     out.push_str("Approved local Git commit completed.\n\n");
-    out.push_str(&format!("Approval request: {}\n", request.approval_request_id));
+    out.push_str(&format!(
+        "Approval request: {}\n",
+        request.approval_request_id
+    ));
     out.push_str(&format!("Branch: {}\n", branch));
     out.push_str(&format!("Status: {}\n", status));
     out.push_str(&format!("Commit hash: {}\n", commit_hash.unwrap_or("none")));
-    out.push_str(&format!("Exit code: {}\n\n", display_exit_code(capture.exit_code)));
+    out.push_str(&format!(
+        "Exit code: {}\n\n",
+        display_exit_code(capture.exit_code)
+    ));
     out.push_str("Approved files from patch:\n");
     for path in approved_files {
         out.push_str("- ");
@@ -811,11 +912,17 @@ fn format_approval_verification(
 ) -> String {
     let mut out = String::new();
     out.push_str("approval_verified=true\n");
-    out.push_str(&format!("approval_request_id={}\n", request.approval_request_id));
+    out.push_str(&format!(
+        "approval_request_id={}\n",
+        request.approval_request_id
+    ));
     out.push_str(&format!("approval_id={}\n", approval.approval_id));
     out.push_str(&format!("approved_by={}\n", approval.approved_by));
     out.push_str(&format!("scope_hash={}\n", approval.scope_hash));
-    out.push_str(&format!("patch_sha256={}\n", approval_request.target.patch_sha256));
+    out.push_str(&format!(
+        "patch_sha256={}\n",
+        approval_request.target.patch_sha256
+    ));
     out.push_str("commit_scope=approved_patch_files_only\n");
     out
 }
@@ -823,7 +930,10 @@ fn format_approval_verification(
 fn format_exit_status(capture: &GitCapture) -> String {
     let mut out = String::new();
     out.push_str(&format!("passed={}\n", capture.passed));
-    out.push_str(&format!("exit_code={}\n", display_exit_code(capture.exit_code)));
+    out.push_str(&format!(
+        "exit_code={}\n",
+        display_exit_code(capture.exit_code)
+    ));
     out
 }
 
@@ -896,7 +1006,8 @@ mod tests {
 
     #[test]
     fn rejects_parent_paths() {
-        let patch = "diff --git a/../bad b/../bad\n--- a/../bad\n+++ b/../bad\n@@ -0,0 +1 @@\n+bad\n";
+        let patch =
+            "diff --git a/../bad b/../bad\n--- a/../bad\n+++ b/../bad\n@@ -0,0 +1 @@\n+bad\n";
         assert!(extract_approved_files(patch).is_err());
     }
 

@@ -1,4 +1,3 @@
-
 //! Local runtime configuration loading for the Gadgets CLI.
 //!
 //! Step 9 keeps provider selection outside the hardcoded Coordinator flow. The
@@ -183,7 +182,10 @@ pub struct SelectedModelProfile<'a> {
 
 #[derive(Debug)]
 pub enum ConfigError {
-    Io { path: PathBuf, source: std::io::Error },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     Yaml(serde_yaml::Error),
     UnsupportedSchema(String),
     InvalidMode(String),
@@ -407,9 +409,10 @@ fn valid_remote_repo_component(input: &str) -> bool {
 fn valid_env_var_name(input: &str) -> bool {
     !input.is_empty()
         && input.trim() == input
-        && input.chars().enumerate().all(|(idx, c)| {
-            c == '_' || c.is_ascii_uppercase() || (idx > 0 && c.is_ascii_digit())
-        })
+        && input
+            .chars()
+            .enumerate()
+            .all(|(idx, c)| c == '_' || c.is_ascii_uppercase() || (idx > 0 && c.is_ascii_digit()))
 }
 
 fn valid_protected_branch_pattern(input: &str) -> bool {
@@ -505,7 +508,6 @@ model_profiles:
         assert_eq!(selected.profile.api_key_env, None);
     }
 
-
     #[test]
     fn parses_openai_profile_options() {
         let config = RuntimeConfig::from_yaml_str(
@@ -524,7 +526,10 @@ model_profiles:
 
         let selected = config.selected_model_profile().unwrap();
         assert_eq!(selected.profile.provider, "openai");
-        assert_eq!(selected.profile.api_key_env.as_deref(), Some("OPENAI_API_KEY"));
+        assert_eq!(
+            selected.profile.api_key_env.as_deref(),
+            Some("OPENAI_API_KEY")
+        );
         ensure_supported_provider(&selected.profile.provider).unwrap();
     }
 
@@ -546,7 +551,10 @@ model_profiles:
 
         let selected = config.selected_model_profile().unwrap();
         assert_eq!(selected.profile.provider, "anthropic");
-        assert_eq!(selected.profile.api_key_env.as_deref(), Some("ANTHROPIC_API_KEY"));
+        assert_eq!(
+            selected.profile.api_key_env.as_deref(),
+            Some("ANTHROPIC_API_KEY")
+        );
         ensure_supported_provider(&selected.profile.provider).unwrap();
     }
 
@@ -674,8 +682,16 @@ model_profiles:
         )
         .unwrap();
 
-        assert!(config.git.protected_branches.iter().any(|item| item == "main"));
-        assert!(config.git.protected_branches.iter().any(|item| item == "release/"));
+        assert!(config
+            .git
+            .protected_branches
+            .iter()
+            .any(|item| item == "main"));
+        assert!(config
+            .git
+            .protected_branches
+            .iter()
+            .any(|item| item == "release/"));
     }
 
     #[test]
@@ -744,5 +760,4 @@ git:
 
         assert!(matches!(err, ConfigError::InvalidGitConfig(_)));
     }
-
 }

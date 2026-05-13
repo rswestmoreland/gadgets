@@ -99,10 +99,9 @@ impl fmt::Display for ProviderError {
                 f,
                 "provider cannot create handoff because target Gadget is not allowed: {target}"
             ),
-            Self::MissingApiKeyEnv(name) => write!(
-                f,
-                "provider requires API key environment variable {name}"
-            ),
+            Self::MissingApiKeyEnv(name) => {
+                write!(f, "provider requires API key environment variable {name}")
+            }
             Self::Http(message) => write!(f, "provider HTTP request failed: {message}"),
             Self::InvalidResponse(message) => write!(f, "provider response was invalid: {message}"),
             Self::StructuredOutputInvalid(message) => {
@@ -157,13 +156,18 @@ impl ModelProvider for MockProvider {
             "filesystem.read"
         };
 
-        if !request.allowed_target_gadgets.iter().any(|value| value == target) {
+        if !request
+            .allowed_target_gadgets
+            .iter()
+            .any(|value| value == target)
+        {
             return Err(ProviderError::NoAllowedTarget(target.to_string()));
         }
 
         let mut safety_notes = vec![
             "Mock provider produced a structured handoff only.".to_string(),
-            "The provider did not read files, execute tools, approve actions, or mutate state.".to_string(),
+            "The provider did not read files, execute tools, approve actions, or mutate state."
+                .to_string(),
             "Runtime policy still controls every action.".to_string(),
         ];
 
@@ -437,7 +441,8 @@ impl ModelProvider for AnthropicProvider {
 
         if response_json.get("stop_reason").and_then(Value::as_str) == Some("max_tokens") {
             return Err(ProviderError::InvalidResponse(
-                "Anthropic response stopped at max_tokens before complete structured output".to_string(),
+                "Anthropic response stopped at max_tokens before complete structured output"
+                    .to_string(),
             ));
         }
 
@@ -691,8 +696,8 @@ fn asks_for_patch_plan(prompt: &str) -> bool {
     prompt_has_any_word(
         prompt,
         &[
-            "patch", "diff", "fix", "change", "edit", "add", "update", "write", "test",
-            "tests", "doc", "docs", "readme",
+            "patch", "diff", "fix", "change", "edit", "add", "update", "write", "test", "tests",
+            "doc", "docs", "readme",
         ],
     )
 }
@@ -701,8 +706,8 @@ fn asks_for_mutation(prompt: &str) -> bool {
     prompt_has_any_word(
         prompt,
         &[
-            "write", "change", "edit", "delete", "remove", "fix", "patch", "install",
-            "restart", "deploy", "apply",
+            "write", "change", "edit", "delete", "remove", "fix", "patch", "install", "restart",
+            "deploy", "apply",
         ],
     )
 }
@@ -711,7 +716,7 @@ fn prompt_has_any_word(prompt: &str, words: &[&str]) -> bool {
     prompt
         .to_ascii_lowercase()
         .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
-        .any(|token| words.iter().any(|word| token == *word))
+        .any(|token| words.contains(&token))
 }
 
 #[cfg(test)]
@@ -734,7 +739,10 @@ mod tests {
         assert_eq!(response.handoff_requests.len(), 1);
         assert_eq!(response.handoff_requests[0].to_gadget, "filesystem.read");
         assert_eq!(response.handoff_requests[0].task_kind, "repo.inspect");
-        assert_eq!(response.handoff_requests[0].scope.zone.as_deref(), Some("local_repo"));
+        assert_eq!(
+            response.handoff_requests[0].scope.zone.as_deref(),
+            Some("local_repo")
+        );
     }
 
     #[test]
@@ -753,7 +761,10 @@ mod tests {
         assert_eq!(response.handoff_requests.len(), 1);
         assert_eq!(response.handoff_requests[0].to_gadget, "patch.writer");
         assert_eq!(response.handoff_requests[0].task_kind, "repo.patch.plan");
-        assert_eq!(response.handoff_requests[0].scope.zone.as_deref(), Some("local_repo"));
+        assert_eq!(
+            response.handoff_requests[0].scope.zone.as_deref(),
+            Some("local_repo")
+        );
     }
 
     #[test]
@@ -844,7 +855,10 @@ mod tests {
         );
         let body = provider.build_body(&request);
 
-        assert_eq!(body.get("model").and_then(Value::as_str), Some("claude-sonnet-4-6"));
+        assert_eq!(
+            body.get("model").and_then(Value::as_str),
+            Some("claude-sonnet-4-6")
+        );
         assert!(body.get("system").is_some());
         assert!(body.get("messages").is_some());
         assert!(body.get("output_config").is_some());

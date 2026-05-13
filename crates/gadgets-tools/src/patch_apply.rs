@@ -13,7 +13,9 @@ use gadgets_evidence::{
     create_observe_bundle, default_runs_root, EvidenceError, EvidenceTextArtifact,
     EvidenceWriteRequest,
 };
-use gadgets_ledger::{append_event, default_ledger_path, new_audit_event, with_target, LedgerError};
+use gadgets_ledger::{
+    append_event, default_ledger_path, new_audit_event, with_target, LedgerError,
+};
 use gadgets_policy::{evaluate_action, PolicyContext, RuntimeMode};
 use sha2::{Digest, Sha256};
 use std::error::Error;
@@ -51,7 +53,9 @@ impl fmt::Display for PatchApplyError {
             Self::Evidence(err) => write!(f, "patch apply evidence error: {err}"),
             Self::Capability(err) => write!(f, "patch apply capability error: {err}"),
             Self::PolicyDenied(reason) => write!(f, "patch apply denied by policy: {reason}"),
-            Self::ApprovalNotVerified(errors) => write!(f, "approval verification failed: {}", errors.join("; ")),
+            Self::ApprovalNotVerified(errors) => {
+                write!(f, "approval verification failed: {}", errors.join("; "))
+            }
             Self::ApprovalRecordMissing(id) => write!(f, "approval record missing for {id}"),
             Self::InvalidPatch(reason) => write!(f, "invalid patch: {reason}"),
             Self::UnsupportedPatch(reason) => write!(f, "unsupported patch: {reason}"),
@@ -176,7 +180,9 @@ pub fn run_patch_apply(
     request: PatchApplyRequest,
 ) -> Result<PatchApplyReport, PatchApplyError> {
     if !project_root.exists() || !project_root.is_dir() {
-        return Err(PatchApplyError::InvalidProjectRoot(project_root.to_path_buf()));
+        return Err(PatchApplyError::InvalidProjectRoot(
+            project_root.to_path_buf(),
+        ));
     }
 
     let project_root = project_root.canonicalize()?;
@@ -212,8 +218,10 @@ pub fn run_patch_apply(
         return Err(PatchApplyError::ApprovalNotVerified(verification.errors));
     }
 
-    let approval = read_approval(&project_root, &request.approval_request_id)?
-        .ok_or_else(|| PatchApplyError::ApprovalRecordMissing(request.approval_request_id.clone()))?;
+    let approval =
+        read_approval(&project_root, &request.approval_request_id)?.ok_or_else(|| {
+            PatchApplyError::ApprovalRecordMissing(request.approval_request_id.clone())
+        })?;
     if approval.status != "approved" {
         return Err(PatchApplyError::ApprovalNotVerified(vec![format!(
             "approval status is {}",
@@ -252,7 +260,11 @@ pub fn run_patch_apply(
     let mut policy_lines = Vec::new();
     for file in &patch_files {
         let action = ActionRequest {
-            action_request_id: format!("actreq_{}_{}", request.apply_run_id, file.path.replace('/', "_")),
+            action_request_id: format!(
+                "actreq_{}_{}",
+                request.apply_run_id,
+                file.path.replace('/', "_")
+            ),
             run_id: request.apply_run_id.clone(),
             requested_by_gadget: gadget.metadata.name.clone(),
             capability: CapabilityName::new(FILE_WRITE_CAPABILITY)
@@ -271,8 +283,12 @@ pub fn run_patch_apply(
             allowlisted_test_command: false,
             allowlisted_git_branch_create: false,
             approved_git_commit: false,
-        approved_git_pr_create: false,
-            decision_id: format!("dec_{}_{}", request.apply_run_id, file.path.replace('/', "_")),
+            approved_git_pr_create: false,
+            decision_id: format!(
+                "dec_{}_{}",
+                request.apply_run_id,
+                file.path.replace('/', "_")
+            ),
         };
         let evaluation = evaluate_action(gadget, &action, &context);
         policy_lines.push(format!(
@@ -358,7 +374,11 @@ pub fn run_patch_apply(
     evidence_request.assumptions = build_assumptions();
     evidence_request.extra_artifacts = vec![
         EvidenceTextArtifact::new("applied_patch", "applied.patch", patch_text),
-        EvidenceTextArtifact::new("files_changed", "files_changed.txt", files_changed.join("\n")),
+        EvidenceTextArtifact::new(
+            "files_changed",
+            "files_changed.txt",
+            files_changed.join("\n"),
+        ),
         EvidenceTextArtifact::new(
             "before_after_hashes",
             "before_after_hashes.txt",
@@ -369,7 +389,11 @@ pub fn run_patch_apply(
             "approval_verification.txt",
             format_approval_verification(&request, &approval_request, &approval),
         ),
-        EvidenceTextArtifact::new("policy_decisions", "policy_decisions.txt", policy_lines.join("\n")),
+        EvidenceTextArtifact::new(
+            "policy_decisions",
+            "policy_decisions.txt",
+            policy_lines.join("\n"),
+        ),
     ];
 
     let evidence_report = create_observe_bundle(&runs_root, evidence_request)?;
@@ -475,9 +499,10 @@ fn parse_unified_diff(patch: &str) -> Result<Vec<PatchFile>, PatchApplyError> {
                 hunk.lines.push(HunkLine::Remove(text.to_string()));
             } else if let Some(text) = line.strip_prefix('+') {
                 hunk.lines.push(HunkLine::Add(text.to_string()));
-            } else if line.starts_with("\\ No newline at end of file") {
-                continue;
-            } else if line.starts_with('#') || line.trim().is_empty() {
+            } else if line.starts_with("\\ No newline at end of file")
+                || line.starts_with('#')
+                || line.trim().is_empty()
+            {
                 continue;
             } else {
                 return Err(PatchApplyError::InvalidPatch(format!(
@@ -632,6 +657,7 @@ fn normalize_safe_relative_path(input: &str) -> Result<PathBuf, PatchApplyError>
     Ok(normalized)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn append_audit(
     ledger_path: &Path,
     request: &PatchApplyRequest,
@@ -671,9 +697,18 @@ fn build_summary(
 ) -> String {
     let mut out = String::new();
     out.push_str("Approved local patch application completed.\n\n");
-    out.push_str(&format!("Approval request: {}\n", request.approval_request_id));
-    out.push_str(&format!("Source plan run: {}\n", approval_request.target.run_id));
-    out.push_str(&format!("Runtime mode: {}\n\n", request.runtime_mode.as_str()));
+    out.push_str(&format!(
+        "Approval request: {}\n",
+        request.approval_request_id
+    ));
+    out.push_str(&format!(
+        "Source plan run: {}\n",
+        approval_request.target.run_id
+    ));
+    out.push_str(&format!(
+        "Runtime mode: {}\n\n",
+        request.runtime_mode.as_str()
+    ));
     out.push_str("Files changed:\n");
     for path in files_changed {
         out.push_str("- ");
@@ -710,11 +745,17 @@ fn format_approval_verification(
 ) -> String {
     let mut out = String::new();
     out.push_str("approval_verified=true\n");
-    out.push_str(&format!("approval_request_id={}\n", request.approval_request_id));
+    out.push_str(&format!(
+        "approval_request_id={}\n",
+        request.approval_request_id
+    ));
     out.push_str(&format!("approval_id={}\n", approval.approval_id));
     out.push_str(&format!("approved_by={}\n", approval.approved_by));
     out.push_str(&format!("scope_hash={}\n", approval.scope_hash));
-    out.push_str(&format!("patch_sha256={}\n", approval_request.target.patch_sha256));
+    out.push_str(&format!(
+        "patch_sha256={}\n",
+        approval_request.target.patch_sha256
+    ));
     out
 }
 
@@ -757,7 +798,8 @@ mod tests {
 
     #[test]
     fn rejects_parent_traversal_path() {
-        let patch = "diff --git a/../bad b/../bad\n--- a/../bad\n+++ b/../bad\n@@ -0,0 +1,1 @@\n+bad\n";
+        let patch =
+            "diff --git a/../bad b/../bad\n--- a/../bad\n+++ b/../bad\n@@ -0,0 +1,1 @@\n+bad\n";
         assert!(parse_unified_diff(patch).is_err());
     }
 

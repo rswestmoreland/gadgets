@@ -19,7 +19,8 @@ pub const DEFAULT_APPROVALS_RELATIVE_PATH: &str = ".gadgets/approvals";
 pub const REQUEST_FILE_NAME: &str = "request.yaml";
 pub const APPROVAL_FILE_NAME: &str = "approval.yaml";
 pub const PATCH_ARTIFACT_RELATIVE_PATH: &str = "evidence/proposed.patch";
-pub const APPROVAL_EXPIRES_AT_FORMAT: &str = "strict RFC3339 UTC without fractional seconds, for example 2999-01-01T00:00:00Z";
+pub const APPROVAL_EXPIRES_AT_FORMAT: &str =
+    "strict RFC3339 UTC without fractional seconds, for example 2999-01-01T00:00:00Z";
 
 #[derive(Debug)]
 pub enum ApprovalError {
@@ -44,13 +45,30 @@ impl fmt::Display for ApprovalError {
             Self::Yaml(err) => write!(f, "approval YAML error: {err}"),
             Self::InvalidId(value) => write!(f, "invalid approval identifier: {value}"),
             Self::InvalidApprover(value) => write!(f, "invalid approver identifier: {value}"),
-            Self::MissingPatch(path) => write!(f, "proposed patch artifact not found at {}", path.display()),
-            Self::MissingRequest(path) => write!(f, "approval request not found at {}", path.display()),
-            Self::MissingApproval(path) => write!(f, "approval record not found at {}", path.display()),
-            Self::AlreadyExists(path) => write!(f, "approval artifact already exists at {}", path.display()),
-            Self::HashMismatch { expected, actual } => write!(f, "patch hash mismatch: expected {expected}, actual {actual}"),
-            Self::ScopeMismatch { expected, actual } => write!(f, "approval scope mismatch: expected {expected}, actual {actual}"),
-            Self::InvalidExpiresAt(value) => write!(f, "invalid approval expiration {value:?}; expected {APPROVAL_EXPIRES_AT_FORMAT}"),
+            Self::MissingPatch(path) => {
+                write!(f, "proposed patch artifact not found at {}", path.display())
+            }
+            Self::MissingRequest(path) => {
+                write!(f, "approval request not found at {}", path.display())
+            }
+            Self::MissingApproval(path) => {
+                write!(f, "approval record not found at {}", path.display())
+            }
+            Self::AlreadyExists(path) => {
+                write!(f, "approval artifact already exists at {}", path.display())
+            }
+            Self::HashMismatch { expected, actual } => write!(
+                f,
+                "patch hash mismatch: expected {expected}, actual {actual}"
+            ),
+            Self::ScopeMismatch { expected, actual } => write!(
+                f,
+                "approval scope mismatch: expected {expected}, actual {actual}"
+            ),
+            Self::InvalidExpiresAt(value) => write!(
+                f,
+                "invalid approval expiration {value:?}; expected {APPROVAL_EXPIRES_AT_FORMAT}"
+            ),
             Self::ExpiredApproval(value) => write!(f, "approval expired at {value}"),
         }
     }
@@ -83,10 +101,7 @@ pub struct PatchApprovalRequestInput {
 }
 
 impl PatchApprovalRequestInput {
-    pub fn local_patch_apply(
-        run_id: impl Into<String>,
-        created_at: impl Into<String>,
-    ) -> Self {
+    pub fn local_patch_apply(run_id: impl Into<String>, created_at: impl Into<String>) -> Self {
         Self {
             run_id: run_id.into(),
             created_at: created_at.into(),
@@ -325,7 +340,10 @@ pub fn approve_request(
     })
 }
 
-pub fn verify_approval(project_root: &Path, approval_request_id: &str) -> Result<ApprovalVerification, ApprovalError> {
+pub fn verify_approval(
+    project_root: &Path,
+    approval_request_id: &str,
+) -> Result<ApprovalVerification, ApprovalError> {
     validate_id(approval_request_id)?;
     let request_path = request_path(project_root, approval_request_id)?;
     if !request_path.exists() {
@@ -338,7 +356,10 @@ pub fn verify_approval(project_root: &Path, approval_request_id: &str) -> Result
     let mut errors = Vec::new();
 
     if !patch_path.exists() {
-        errors.push(format!("missing patch artifact at {}", patch_path.display()));
+        errors.push(format!(
+            "missing patch artifact at {}",
+            patch_path.display()
+        ));
     } else {
         match hash_file(&patch_path) {
             Ok(actual) if actual == request.target.patch_sha256 => {}
@@ -353,7 +374,9 @@ pub fn verify_approval(project_root: &Path, approval_request_id: &str) -> Result
     if let Some(expires_at) = request.expires_at.as_deref() {
         match validate_expires_at_not_expired(expires_at) {
             Ok(()) => {}
-            Err(ApprovalError::ExpiredApproval(value)) => errors.push(format!("approval expired at {value}")),
+            Err(ApprovalError::ExpiredApproval(value)) => {
+                errors.push(format!("approval expired at {value}"))
+            }
             Err(ApprovalError::InvalidExpiresAt(value)) => errors.push(format!(
                 "invalid approval expiration {value:?}; expected {APPROVAL_EXPIRES_AT_FORMAT}"
             )),
@@ -387,7 +410,10 @@ pub fn verify_approval(project_root: &Path, approval_request_id: &str) -> Result
             errors.push("approval expiration does not match request expiration".to_string());
         }
     } else {
-        errors.push(format!("approval record missing at {}", approval_path.display()));
+        errors.push(format!(
+            "approval record missing at {}",
+            approval_path.display()
+        ));
     }
 
     if errors.is_empty() {
@@ -408,7 +434,10 @@ pub fn verify_approval(project_root: &Path, approval_request_id: &str) -> Result
     }
 }
 
-pub fn read_request(project_root: &Path, approval_request_id: &str) -> Result<ApprovalRequestRecord, ApprovalError> {
+pub fn read_request(
+    project_root: &Path,
+    approval_request_id: &str,
+) -> Result<ApprovalRequestRecord, ApprovalError> {
     validate_id(approval_request_id)?;
     let path = request_path(project_root, approval_request_id)?;
     if !path.exists() {
@@ -417,7 +446,10 @@ pub fn read_request(project_root: &Path, approval_request_id: &str) -> Result<Ap
     read_request_record(&path)
 }
 
-pub fn read_approval(project_root: &Path, approval_request_id: &str) -> Result<Option<ApprovalRecord>, ApprovalError> {
+pub fn read_approval(
+    project_root: &Path,
+    approval_request_id: &str,
+) -> Result<Option<ApprovalRecord>, ApprovalError> {
     validate_id(approval_request_id)?;
     let path = approval_path(project_root, approval_request_id)?;
     if !path.exists() {
@@ -439,11 +471,17 @@ pub fn patch_artifact_path(project_root: &Path, run_id: &str) -> Result<PathBuf,
         .join(PATCH_ARTIFACT_RELATIVE_PATH))
 }
 
-pub fn request_path(project_root: &Path, approval_request_id: &str) -> Result<PathBuf, ApprovalError> {
+pub fn request_path(
+    project_root: &Path,
+    approval_request_id: &str,
+) -> Result<PathBuf, ApprovalError> {
     Ok(request_dir(project_root, approval_request_id)?.join(REQUEST_FILE_NAME))
 }
 
-pub fn approval_path(project_root: &Path, approval_request_id: &str) -> Result<PathBuf, ApprovalError> {
+pub fn approval_path(
+    project_root: &Path,
+    approval_request_id: &str,
+) -> Result<PathBuf, ApprovalError> {
     Ok(request_dir(project_root, approval_request_id)?.join(APPROVAL_FILE_NAME))
 }
 
@@ -460,7 +498,10 @@ fn read_approval_record(path: &Path) -> Result<ApprovalRecord, ApprovalError> {
     Ok(serde_yaml::from_str(&fs::read_to_string(path)?)?)
 }
 
-fn verify_request_patch_hash(project_root: &Path, request: &ApprovalRequestRecord) -> Result<(), ApprovalError> {
+fn verify_request_patch_hash(
+    project_root: &Path,
+    request: &ApprovalRequestRecord,
+) -> Result<(), ApprovalError> {
     let patch_path = patch_artifact_path(project_root, &request.target.run_id)?;
     if !patch_path.exists() {
         return Err(ApprovalError::MissingPatch(patch_path));
@@ -504,12 +545,12 @@ fn default_patch_conditions() -> Vec<String> {
     vec![
         "Approval is limited to the exact patch artifact hash in this request.".to_string(),
         "Any changed patch contents invalidate this approval.".to_string(),
-        "Approval expiration, when present, is strict RFC3339 UTC and is enforced before use.".to_string(),
+        "Approval expiration, when present, is strict RFC3339 UTC and is enforced before use."
+            .to_string(),
         "A future apply step must still pass policy boundary checks.".to_string(),
         "This approval record does not apply the patch by itself.".to_string(),
     ]
 }
-
 
 fn validate_optional_expires_at(value: Option<&str>) -> Result<(), ApprovalError> {
     if let Some(expires_at) = value {
@@ -553,7 +594,7 @@ fn parse_strict_rfc3339_utc(value: &str) -> Result<i64, ApprovalError> {
     let minute = parse_digits(value, 14, 16)?;
     let second = parse_digits(value, 17, 19)?;
 
-    if month < 1 || month > 12 {
+    if !(1..=12).contains(&month) {
         return Err(ApprovalError::InvalidExpiresAt(value.to_string()));
     }
     let max_day = days_in_month(year, month);
@@ -623,7 +664,9 @@ fn validate_id(value: &str) -> Result<(), ApprovalError> {
         || value.contains("..")
         || value.contains('/')
         || value.contains('\\')
-        || !value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+        || !value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
     {
         return Err(ApprovalError::InvalidId(value.to_string()));
     }
@@ -635,7 +678,9 @@ fn validate_approver(value: &str) -> Result<(), ApprovalError> {
         || value.contains("..")
         || value.contains('/')
         || value.contains('\\')
-        || !value.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' || c == '@')
+        || !value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' || c == '@')
     {
         return Err(ApprovalError::InvalidApprover(value.to_string()));
     }
@@ -687,8 +732,13 @@ mod tests {
         assert_eq!(request.approval_request_id, "apr_run_1_patch");
         assert!(request.scope_hash.starts_with("sha256:"));
 
-        let approval = approve_request(&project, &request.approval_request_id, "user@example.com", "approved")
-            .unwrap();
+        let approval = approve_request(
+            &project,
+            &request.approval_request_id,
+            "user@example.com",
+            "approved",
+        )
+        .unwrap();
         assert_eq!(approval.scope_hash, request.scope_hash);
 
         let verification = verify_approval(&project, &request.approval_request_id).unwrap();
@@ -706,12 +756,20 @@ mod tests {
             PatchApprovalRequestInput::local_patch_apply("run_1", "created"),
         )
         .unwrap();
-        approve_request(&project, &request.approval_request_id, "user@example.com", "approved")
-            .unwrap();
+        approve_request(
+            &project,
+            &request.approval_request_id,
+            "user@example.com",
+            "approved",
+        )
+        .unwrap();
         fs::write(&patch_path, "changed\n").unwrap();
         let verification = verify_approval(&project, &request.approval_request_id).unwrap();
         assert!(!verification.valid);
-        assert!(verification.errors.iter().any(|err| err.contains("patch hash mismatch")));
+        assert!(verification
+            .errors
+            .iter()
+            .any(|err| err.contains("patch hash mismatch")));
     }
 
     #[test]
@@ -727,9 +785,11 @@ mod tests {
         .unwrap();
         let verification = verify_approval(&project, &request.approval_request_id).unwrap();
         assert!(!verification.valid);
-        assert!(verification.errors.iter().any(|err| err.contains("approval record missing")));
+        assert!(verification
+            .errors
+            .iter()
+            .any(|err| err.contains("approval record missing")));
     }
-
 
     #[test]
     fn parses_strict_utc_expiration() {
@@ -768,8 +828,13 @@ mod tests {
                 .with_expires_at("2999-01-01T00:00:00Z"),
         )
         .unwrap();
-        approve_request(&project, &request.approval_request_id, "user@example.com", "approved")
-            .unwrap();
+        approve_request(
+            &project,
+            &request.approval_request_id,
+            "user@example.com",
+            "approved",
+        )
+        .unwrap();
 
         let verification = verify_approval(&project, &request.approval_request_id).unwrap();
         assert!(verification.valid);
@@ -788,8 +853,13 @@ mod tests {
                 .with_expires_at("1970-01-01T00:00:01Z"),
         )
         .unwrap();
-        let err = approve_request(&project, &request.approval_request_id, "user@example.com", "approved")
-            .unwrap_err();
+        let err = approve_request(
+            &project,
+            &request.approval_request_id,
+            "user@example.com",
+            "approved",
+        )
+        .unwrap_err();
 
         assert!(matches!(err, ApprovalError::ExpiredApproval(_)));
     }
@@ -807,24 +877,40 @@ mod tests {
                 .with_expires_at("2999-01-01T00:00:00Z"),
         )
         .unwrap();
-        approve_request(&project, &request.approval_request_id, "user@example.com", "approved")
-            .unwrap();
+        approve_request(
+            &project,
+            &request.approval_request_id,
+            "user@example.com",
+            "approved",
+        )
+        .unwrap();
 
         let request_path = request_path(&project, &request.approval_request_id).unwrap();
         let mut request_record = read_request(&project, &request.approval_request_id).unwrap();
         request_record.expires_at = Some("1970-01-01T00:00:01Z".to_string());
-        fs::write(&request_path, serde_yaml::to_string(&request_record).unwrap()).unwrap();
+        fs::write(
+            &request_path,
+            serde_yaml::to_string(&request_record).unwrap(),
+        )
+        .unwrap();
 
         let approval_path = approval_path(&project, &request.approval_request_id).unwrap();
         let mut approval_record = read_approval(&project, &request.approval_request_id)
             .unwrap()
             .unwrap();
         approval_record.expires_at = Some("1970-01-01T00:00:01Z".to_string());
-        fs::write(&approval_path, serde_yaml::to_string(&approval_record).unwrap()).unwrap();
+        fs::write(
+            &approval_path,
+            serde_yaml::to_string(&approval_record).unwrap(),
+        )
+        .unwrap();
 
         let verification = verify_approval(&project, &request.approval_request_id).unwrap();
         assert!(!verification.valid);
-        assert!(verification.errors.iter().any(|err| err.contains("approval expired")));
+        assert!(verification
+            .errors
+            .iter()
+            .any(|err| err.contains("approval expired")));
     }
 
     #[test]

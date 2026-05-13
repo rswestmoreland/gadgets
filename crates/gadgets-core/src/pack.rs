@@ -128,6 +128,8 @@ metadata:
   description: Empty.
 "#;
         let err = PackManifest::from_yaml_str(yaml).unwrap_err();
-        assert!(err.to_string().contains("pack must contain at least one Gadget"));
+        assert!(err
+            .to_string()
+            .contains("pack must contain at least one Gadget"));
     }
 }

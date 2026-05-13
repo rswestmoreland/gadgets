@@ -35,9 +35,15 @@ impl fmt::Display for EvidenceError {
             Self::Io(err) => write!(f, "evidence I/O error: {err}"),
             Self::Yaml(err) => write!(f, "evidence YAML error: {err}"),
             Self::InvalidId(value) => write!(f, "invalid evidence identifier: {value}"),
-            Self::InvalidArtifactName(value) => write!(f, "invalid evidence artifact name: {value}"),
-            Self::AlreadyExists(path) => write!(f, "evidence bundle already exists at {}", path.display()),
-            Self::MissingBundle(path) => write!(f, "evidence bundle not found at {}", path.display()),
+            Self::InvalidArtifactName(value) => {
+                write!(f, "invalid evidence artifact name: {value}")
+            }
+            Self::AlreadyExists(path) => {
+                write!(f, "evidence bundle already exists at {}", path.display())
+            }
+            Self::MissingBundle(path) => {
+                write!(f, "evidence bundle not found at {}", path.display())
+            }
         }
     }
 }
@@ -288,7 +294,7 @@ fn summary_markdown(request: &EvidenceWriteRequest) -> String {
     out.push_str(&format!("Status: {}\n\n", request.status));
     out.push_str("## Summary\n\n");
     out.push_str(&request.summary);
-    out.push_str("\n");
+    out.push('\n');
 
     if !request.denied_actions.is_empty() {
         out.push_str("\n## Denied Actions\n\n");
@@ -382,7 +388,9 @@ mod tests {
             "Repository inspected successfully.",
         );
         request.denied_actions.push("Denied .env read".to_string());
-        request.assumptions.push("No writes were attempted.".to_string());
+        request
+            .assumptions
+            .push("No writes were attempted.".to_string());
         request.extra_artifacts.push(EvidenceTextArtifact::new(
             "files_read",
             "files_read.txt",

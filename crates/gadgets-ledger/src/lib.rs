@@ -28,7 +28,11 @@ impl fmt::Display for LedgerError {
             Self::Io(err) => write!(f, "ledger I/O error: {err}"),
             Self::Json(err) => write!(f, "ledger JSON error: {err}"),
             Self::InvalidLedger(errors) => {
-                write!(f, "ledger verification failed before append: {}", errors.join("; "))
+                write!(
+                    f,
+                    "ledger verification failed before append: {}",
+                    errors.join("; ")
+                )
             }
         }
     }
@@ -90,6 +94,7 @@ pub fn default_ledger_path(project_root: &Path) -> PathBuf {
     project_root.join(DEFAULT_LEDGER_RELATIVE_PATH)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn new_audit_event(
     event_id: impl Into<String>,
     timestamp: impl Into<String>,
@@ -217,7 +222,11 @@ pub fn verify_ledger(path: &Path) -> Result<LedgerVerification, LedgerError> {
     if errors.is_empty() {
         Ok(LedgerVerification::ok(path.to_path_buf(), events.len()))
     } else {
-        Ok(LedgerVerification::invalid(path.to_path_buf(), events.len(), errors))
+        Ok(LedgerVerification::invalid(
+            path.to_path_buf(),
+            events.len(),
+            errors,
+        ))
     }
 }
 
@@ -368,7 +377,10 @@ mod tests {
         let result = verify_ledger(&path).unwrap();
         assert!(!result.valid);
         assert_eq!(result.events_checked, 1);
-        assert!(result.errors.iter().any(|err| err.contains("hash mismatch")));
+        assert!(result
+            .errors
+            .iter()
+            .any(|err| err.contains("hash mismatch")));
 
         fs::remove_file(path).unwrap();
     }
