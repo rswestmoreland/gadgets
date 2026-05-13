@@ -75,7 +75,9 @@ impl fmt::Display for GitRemotePrError {
             Self::InvalidRunId(value) => write!(f, "invalid PR body run id: {value}"),
             Self::InvalidTitle(reason) => write!(f, "invalid remote PR title: {reason}"),
             Self::InvalidBranch(reason) => write!(f, "invalid remote PR branch: {reason}"),
-            Self::DuplicatePullRequest(reason) => write!(f, "duplicate remote PR rejected: {reason}"),
+            Self::DuplicatePullRequest(reason) => {
+                write!(f, "duplicate remote PR rejected: {reason}")
+            }
             Self::MissingPrBody(run_id) => write!(
                 f,
                 "PR body evidence is missing required artifacts for run {run_id}"
@@ -408,7 +410,7 @@ pub fn run_git_remote_pr_create(
     } else {
         let token = read_token(&request.config.token_env)?;
         if let Some(existing) = find_existing_github_pr(&request, &token)? {
-            duplicate_pr_capture(&request, existing)
+            duplicate_pr_capture(&request, existing)?
         } else {
             create_github_pr(&request, &title, &pr_body.body, &token)?
         }
@@ -803,7 +805,6 @@ fn read_token(env_name: &str) -> Result<String, GitRemotePrError> {
     }
     Ok(value)
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ExistingPullRequest {

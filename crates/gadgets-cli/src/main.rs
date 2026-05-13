@@ -18,7 +18,7 @@ use gadgets_approval::{
 };
 use gadgets_evidence::{
     bundle_path_for_run, create_observe_bundle, default_runs_root, summarize_bundle,
-    verify_bundle_hash, EvidenceTextArtifact, EvidenceWriteRequest, EvidenceWriteReport,
+    verify_bundle_hash, EvidenceTextArtifact, EvidenceWriteReport, EvidenceWriteRequest,
 };
 use gadgets_ledger::{
     append_event, default_ledger_path, new_audit_event, summarize_events, verify_ledger,
@@ -37,16 +37,17 @@ use gadgets_tools::{
     RemotePrProviderConfig, TestCommandSpec, TestRunRequest,
 };
 use init::init_project;
-use pack_trust::{
-    check_pack_trust, inspect_trust_roots, preview_pack_trust_policy,
-    verify_pack_signature_metadata, PackSignatureMetadataReport, PackTrustPolicyPreviewReport,
-    PackTrustReport, TrustRootsReport, TRUST_ROOT_RELATIVE_PATH as TRUST_ROOT_RELATIVE_PATH_FOR_AUDIT,
-};
 use manifest_loader::{
     ensure_pack_installed, gadget_manifest_available, load_gadget_manifest,
     load_installed_pack_manifests, load_pack_manifest, validate_installed_packs,
     validate_pack_tree, PackValidationReport, DEVELOPER_PACK, FILESYSTEM_READ_GADGET,
     GIT_PR_GADGET, PATCH_WRITER_GADGET, TEST_RUNNER_GADGET,
+};
+use pack_trust::{
+    check_pack_trust, inspect_trust_roots, preview_pack_trust_policy,
+    verify_pack_signature_metadata, PackSignatureMetadataReport, PackTrustPolicyPreviewReport,
+    PackTrustReport, TrustRootsReport,
+    TRUST_ROOT_RELATIVE_PATH as TRUST_ROOT_RELATIVE_PATH_FOR_AUDIT,
 };
 
 fn main() {
@@ -788,7 +789,6 @@ fn handle_pack_trust(args: Vec<String>) {
     }
 }
 
-
 fn write_pack_trust_check_evidence(
     project_root: &Path,
     run_id: &str,
@@ -815,7 +815,11 @@ fn write_pack_trust_check_evidence(
                 report.source_kind.as_str()
             ),
         ),
-        EvidenceTextArtifact::new("pack_identity", "pack_identity.yaml", pack_identity_yaml(report)),
+        EvidenceTextArtifact::new(
+            "pack_identity",
+            "pack_identity.yaml",
+            pack_identity_yaml(report),
+        ),
         EvidenceTextArtifact::new(
             "pack_manifest_hash",
             "pack_manifest_hash.txt",
@@ -1202,7 +1206,11 @@ fn trusted_publishers_summary_text(report: &TrustRootsReport) -> String {
         let _ = writeln!(out, "public_key_present: {}", publisher.public_key_present);
         let _ = writeln!(out, "allowed_pack_count: {}", publisher.allowed_pack_count);
         if !publisher.allowed_pack_ids.is_empty() {
-            let _ = writeln!(out, "allowed_pack_ids: {}", publisher.allowed_pack_ids.join(","));
+            let _ = writeln!(
+                out,
+                "allowed_pack_ids: {}",
+                publisher.allowed_pack_ids.join(",")
+            );
         }
         if let Some(value) = publisher.expires_at.as_deref() {
             let _ = writeln!(out, "expires_at: {value}");
@@ -1363,7 +1371,10 @@ fn print_pack_trust_preview_report(report: &PackTrustPolicyPreviewReport) {
     println!("Source kind: {}", report.pack.source_kind.as_str());
     println!("Diagnostic decision: {}", report.pack.decision);
     println!("Policy preview decision: {}", report.preview_decision);
-    println!("Signature metadata decision: {}", report.signature_metadata_decision);
+    println!(
+        "Signature metadata decision: {}",
+        report.signature_metadata_decision
+    );
     println!("Signature present: {}", report.signature_present);
     println!(
         "Cryptographic verification performed: {}",
@@ -1381,7 +1392,10 @@ fn print_pack_trust_preview_report(report: &PackTrustPolicyPreviewReport) {
         "Would require verified signature: {}",
         report.would_require_verified_signature
     );
-    println!("Would require trust root: {}", report.would_require_trust_root);
+    println!(
+        "Would require trust root: {}",
+        report.would_require_trust_root
+    );
     println!("Enforcement active: {}", report.enforcement_active);
     println!("Manifest SHA-256: {}", report.pack.manifest_sha256);
 
@@ -1398,7 +1412,10 @@ fn print_pack_trust_preview_report(report: &PackTrustPolicyPreviewReport) {
 }
 
 fn print_pack_signature_metadata_report(report: &PackSignatureMetadataReport) {
-    println!("Pack signature verification check: {}", report.pack.pack_name);
+    println!(
+        "Pack signature verification check: {}",
+        report.pack.pack_name
+    );
     println!("Version: {}", report.pack.pack_version);
     println!("Source: {}", report.pack.source);
     println!("Source kind: {}", report.pack.source_kind.as_str());
@@ -2264,8 +2281,6 @@ fn handle_git(args: Vec<String>) {
                             println!("Git branch run: {}", report.run_id);
                             println!("Branch: {}", report.branch_name);
                             println!("Passed: {}", report.passed);
-                            println!("Dry run: {}", report.dry_run);
-                            println!("Duplicate PR found: {}", report.duplicate_found);
                             println!(
                                 "Exit code: {}",
                                 report
@@ -2379,8 +2394,6 @@ fn handle_git(args: Vec<String>) {
                             println!("Approval request: {}", report.approval_request_id);
                             println!("Branch: {}", report.branch_name);
                             println!("Passed: {}", report.passed);
-                            println!("Dry run: {}", report.dry_run);
-                            println!("Duplicate PR found: {}", report.duplicate_found);
                             println!(
                                 "Exit code: {}",
                                 report
@@ -2595,8 +2608,6 @@ fn handle_git(args: Vec<String>) {
                             println!("Repository: {}", report.repository);
                             println!("Title: {}", report.title);
                             println!("Passed: {}", report.passed);
-                            println!("Dry run: {}", report.dry_run);
-                            println!("Duplicate PR found: {}", report.duplicate_found);
                             println!(
                                 "HTTP status: {}",
                                 report
@@ -3160,7 +3171,9 @@ fn print_help() {
     println!("  gadgets pack validate [--project <path>] [--strict] [pack]");
     println!("  gadgets pack trust check [--project <path>] <pack>");
     println!("  gadgets pack trust roots [--project <path>]");
-    println!("  gadgets pack trust preview [--project <path>] [--mode safe|team|production] <pack>");
+    println!(
+        "  gadgets pack trust preview [--project <path>] [--mode safe|team|production] <pack>"
+    );
     println!("  gadgets pack trust signature [--project <path>] <pack>");
     println!("  gadgets help");
     println!("  gadgets version");
@@ -3176,7 +3189,9 @@ fn print_help() {
     );
     println!("  test      Run a named allowlisted test command from .gadgets/config.yaml.");
     println!("  git       Read local Git status, create protected local branches, commit approved patches, generate PR bodies, and create guarded remote PRs through fixed commands.");
-    println!("  pack      List, show, validate, or inspect trust status for Gadget pack manifests.");
+    println!(
+        "  pack      List, show, validate, or inspect trust status for Gadget pack manifests."
+    );
 }
 
 fn print_test_help() {
@@ -3219,7 +3234,9 @@ fn print_pack_help() {
     println!("  gadgets pack validate [--project <path>] [--strict] [pack]");
     println!("  gadgets pack trust check [--project <path>] <pack>");
     println!("  gadgets pack trust roots [--project <path>]");
-    println!("  gadgets pack trust preview [--project <path>] [--mode safe|team|production] <pack>");
+    println!(
+        "  gadgets pack trust preview [--project <path>] [--mode safe|team|production] <pack>"
+    );
     println!("  gadgets pack trust signature [--project <path>] <pack>");
     println!();
     println!("Packs are loaded from .gadgets/packs/<pack>/pack.yaml when present, then built-in pack manifests.");

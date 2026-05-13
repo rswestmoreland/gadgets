@@ -171,8 +171,14 @@ impl PackTrustSeverity {
 #[derive(Debug)]
 pub enum PackTrustError {
     Manifest(ManifestLoadError),
-    Io { path: PathBuf, source: std::io::Error },
-    Yaml { path: PathBuf, source: serde_yaml::Error },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    Yaml {
+        path: PathBuf,
+        source: serde_yaml::Error,
+    },
 }
 
 impl fmt::Display for PackTrustError {
@@ -180,10 +186,18 @@ impl fmt::Display for PackTrustError {
         match self {
             Self::Manifest(err) => write!(f, "failed to load pack manifest: {err}"),
             Self::Io { path, source } => {
-                write!(f, "failed to read pack trust file {}: {source}", path.display())
+                write!(
+                    f,
+                    "failed to read pack trust file {}: {source}",
+                    path.display()
+                )
             }
             Self::Yaml { path, source } => {
-                write!(f, "failed to parse pack trust YAML {}: {source}", path.display())
+                write!(
+                    f,
+                    "failed to parse pack trust YAML {}: {source}",
+                    path.display()
+                )
             }
         }
     }
@@ -214,7 +228,8 @@ pub fn check_pack_trust(
             });
             findings.push(PackTrustFinding {
                 severity: PackTrustSeverity::Info,
-                message: "pack trust enforcement is not enabled for diagnostic commands".to_string(),
+                message: "pack trust enforcement is not enabled for diagnostic commands"
+                    .to_string(),
             });
             Ok(PackTrustReport {
                 pack_name: loaded.manifest.metadata.name,
@@ -269,7 +284,8 @@ pub fn check_pack_trust(
                     } else {
                         findings.push(PackTrustFinding {
                             severity: PackTrustSeverity::Info,
-                            message: "signature manifest_sha256 matches current pack.yaml".to_string(),
+                            message: "signature manifest_sha256 matches current pack.yaml"
+                                .to_string(),
                         });
                     }
                 }
@@ -286,7 +302,8 @@ pub fn check_pack_trust(
                     } else {
                         findings.push(PackTrustFinding {
                             severity: PackTrustSeverity::Info,
-                            message: "signature contents_sha256 matches current pack.contents.yaml".to_string(),
+                            message: "signature contents_sha256 matches current pack.contents.yaml"
+                                .to_string(),
                         });
                     }
                 }
@@ -333,7 +350,6 @@ pub fn check_pack_trust(
     }
 }
 
-
 pub fn preview_pack_trust_policy(
     project_root: &Path,
     pack_name: &str,
@@ -347,62 +363,91 @@ pub fn preview_pack_trust_policy(
         && !signature_report.signature_expired
         && !signature_report.trust_root_expired;
 
-    let (would_allow_load, would_require_verified_signature, would_require_trust_root, preview_decision) =
-        match (&pack.source_kind, runtime_mode) {
-            (PackSourceKind::Builtin, _) => {
+    let (
+        would_allow_load,
+        would_require_verified_signature,
+        would_require_trust_root,
+        preview_decision,
+    ) = match (&pack.source_kind, runtime_mode) {
+        (PackSourceKind::Builtin, _) => {
+            findings.push(PackTrustFinding {
+                severity: PackTrustSeverity::Info,
+                message: "built-in packs would remain trusted as part of the runtime distribution"
+                    .to_string(),
+            });
+            (true, false, false, "trusted_builtin".to_string())
+        }
+        (PackSourceKind::ProjectLocal, RuntimeMode::Safe) => {
+            if signature_verified {
                 findings.push(PackTrustFinding {
-                    severity: PackTrustSeverity::Info,
-                    message: "built-in packs would remain trusted as part of the runtime distribution"
-                        .to_string(),
-                });
-                (true, false, false, "trusted_builtin".to_string())
-            }
-            (PackSourceKind::ProjectLocal, RuntimeMode::Safe) => {
-                if signature_verified {
-                    findings.push(PackTrustFinding {
                         severity: PackTrustSeverity::Info,
                         message: "Safe Mode preview found a valid signature, but Safe Mode would still allow local unsigned development packs with warnings".to_string(),
                     });
-                    (true, false, false, "safe_allow_verified_local".to_string())
-                } else {
-                    findings.push(PackTrustFinding {
+                (true, false, false, "safe_allow_verified_local".to_string())
+            } else {
+                findings.push(PackTrustFinding {
                         severity: PackTrustSeverity::Warning,
                         message: "Safe Mode preview would allow this project-local pack for developer workflows even though the signature is not verified".to_string(),
                     });
-                    (true, false, false, "safe_allow_unsigned_or_unverified_local".to_string())
-                }
+                (
+                    true,
+                    false,
+                    false,
+                    "safe_allow_unsigned_or_unverified_local".to_string(),
+                )
             }
-            (PackSourceKind::ProjectLocal, RuntimeMode::Team) => {
-                if signature_verified {
-                    findings.push(PackTrustFinding {
+        }
+        (PackSourceKind::ProjectLocal, RuntimeMode::Team) => {
+            if signature_verified {
+                findings.push(PackTrustFinding {
                         severity: PackTrustSeverity::Info,
                         message: "Team Mode preview would allow this project-local pack because its signature verified against trusted publisher metadata".to_string(),
                     });
-                    (true, true, true, "team_allow_verified_signature".to_string())
-                } else {
-                    findings.push(PackTrustFinding {
+                (
+                    true,
+                    true,
+                    true,
+                    "team_allow_verified_signature".to_string(),
+                )
+            } else {
+                findings.push(PackTrustFinding {
                         severity: PackTrustSeverity::Error,
                         message: "Team Mode preview would deny this project-local pack because no valid trusted signature is available".to_string(),
                     });
-                    (false, true, true, "team_deny_unverified_signature".to_string())
-                }
+                (
+                    false,
+                    true,
+                    true,
+                    "team_deny_unverified_signature".to_string(),
+                )
             }
-            (PackSourceKind::ProjectLocal, RuntimeMode::Production) => {
-                if signature_verified {
-                    findings.push(PackTrustFinding {
+        }
+        (PackSourceKind::ProjectLocal, RuntimeMode::Production) => {
+            if signature_verified {
+                findings.push(PackTrustFinding {
                         severity: PackTrustSeverity::Info,
                         message: "Production Mode preview would allow this project-local pack because its signature verified against trusted publisher metadata".to_string(),
                     });
-                    (true, true, true, "production_allow_verified_signature".to_string())
-                } else {
-                    findings.push(PackTrustFinding {
+                (
+                    true,
+                    true,
+                    true,
+                    "production_allow_verified_signature".to_string(),
+                )
+            } else {
+                findings.push(PackTrustFinding {
                         severity: PackTrustSeverity::Error,
                         message: "Production Mode preview would deny this project-local pack unless a valid trusted signature is available".to_string(),
                     });
-                    (false, true, true, "production_deny_unverified_signature".to_string())
-                }
+                (
+                    false,
+                    true,
+                    true,
+                    "production_deny_unverified_signature".to_string(),
+                )
             }
-        };
+        }
+    };
 
     findings.push(PackTrustFinding {
         severity: PackTrustSeverity::Info,
@@ -479,7 +524,8 @@ pub fn verify_pack_signature_metadata(
         metadata_valid = false;
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Error,
-            message: "trust-root metadata has errors that prevent valid signature metadata linkage".to_string(),
+            message: "trust-root metadata has errors that prevent valid signature metadata linkage"
+                .to_string(),
         });
     }
 
@@ -490,7 +536,9 @@ pub fn verify_pack_signature_metadata(
         });
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Info,
-            message: "signature metadata verification is diagnostic only and does not block pack loading".to_string(),
+            message:
+                "signature metadata verification is diagnostic only and does not block pack loading"
+                    .to_string(),
         });
         return Ok(PackSignatureMetadataReport {
             pack,
@@ -510,16 +558,66 @@ pub fn verify_pack_signature_metadata(
         });
     };
 
-    require_signature_field("version", signature.version.as_deref(), &mut metadata_valid, &mut findings);
-    require_signature_field("algorithm", signature.algorithm.as_deref(), &mut metadata_valid, &mut findings);
-    require_signature_field("publisher", signature.publisher.as_deref(), &mut metadata_valid, &mut findings);
-    require_signature_field("key_id", signature.key_id.as_deref(), &mut metadata_valid, &mut findings);
-    require_signature_field("pack_id", signature.pack_id.as_deref(), &mut metadata_valid, &mut findings);
-    require_signature_field("pack_version", signature.pack_version.as_deref(), &mut metadata_valid, &mut findings);
-    require_signature_field("manifest_sha256", signature.manifest_sha256.as_deref(), &mut metadata_valid, &mut findings);
-    require_signature_field("contents_sha256", signature.contents_sha256.as_deref(), &mut metadata_valid, &mut findings);
-    require_signature_field("created_at", signature.created_at.as_deref(), &mut metadata_valid, &mut findings);
-    require_signature_field("expires_at", signature.expires_at.as_deref(), &mut metadata_valid, &mut findings);
+    require_signature_field(
+        "version",
+        signature.version.as_deref(),
+        &mut metadata_valid,
+        &mut findings,
+    );
+    require_signature_field(
+        "algorithm",
+        signature.algorithm.as_deref(),
+        &mut metadata_valid,
+        &mut findings,
+    );
+    require_signature_field(
+        "publisher",
+        signature.publisher.as_deref(),
+        &mut metadata_valid,
+        &mut findings,
+    );
+    require_signature_field(
+        "key_id",
+        signature.key_id.as_deref(),
+        &mut metadata_valid,
+        &mut findings,
+    );
+    require_signature_field(
+        "pack_id",
+        signature.pack_id.as_deref(),
+        &mut metadata_valid,
+        &mut findings,
+    );
+    require_signature_field(
+        "pack_version",
+        signature.pack_version.as_deref(),
+        &mut metadata_valid,
+        &mut findings,
+    );
+    require_signature_field(
+        "manifest_sha256",
+        signature.manifest_sha256.as_deref(),
+        &mut metadata_valid,
+        &mut findings,
+    );
+    require_signature_field(
+        "contents_sha256",
+        signature.contents_sha256.as_deref(),
+        &mut metadata_valid,
+        &mut findings,
+    );
+    require_signature_field(
+        "created_at",
+        signature.created_at.as_deref(),
+        &mut metadata_valid,
+        &mut findings,
+    );
+    require_signature_field(
+        "expires_at",
+        signature.expires_at.as_deref(),
+        &mut metadata_valid,
+        &mut findings,
+    );
 
     if !signature.signature_present {
         metadata_valid = false;
@@ -569,20 +667,25 @@ pub fn verify_pack_signature_metadata(
         });
     }
 
-    match (pack.contents_manifest.as_ref(), signature.contents_sha256.as_deref()) {
+    match (
+        pack.contents_manifest.as_ref(),
+        signature.contents_sha256.as_deref(),
+    ) {
         (Some(contents), Some(expected)) if expected == contents.sha256 => {}
         (Some(_), Some(_)) => {
             metadata_valid = false;
             findings.push(PackTrustFinding {
                 severity: PackTrustSeverity::Error,
-                message: "signature contents_sha256 does not match current pack.contents.yaml".to_string(),
+                message: "signature contents_sha256 does not match current pack.contents.yaml"
+                    .to_string(),
             });
         }
         (None, Some(_)) => {
             metadata_valid = false;
             findings.push(PackTrustFinding {
                 severity: PackTrustSeverity::Error,
-                message: "signature references contents_sha256 but pack.contents.yaml is missing".to_string(),
+                message: "signature references contents_sha256 but pack.contents.yaml is missing"
+                    .to_string(),
             });
         }
         (_, None) => {}
@@ -624,10 +727,13 @@ pub fn verify_pack_signature_metadata(
     let mut matched_publisher: Option<&TrustedPublisherSummary> = None;
     if trust_roots.exists && trust_roots.parsed {
         for publisher in &trust_roots.publishers {
-            let publisher_matches = publisher.publisher.as_deref() == signature.publisher.as_deref();
+            let publisher_matches =
+                publisher.publisher.as_deref() == signature.publisher.as_deref();
             let key_matches = publisher.key_id.as_deref() == signature.key_id.as_deref();
-            let algorithm_matches = publisher.algorithm.as_deref() == signature.algorithm.as_deref();
-            if publisher_matches && key_matches && algorithm_matches && publisher.public_key_present {
+            let algorithm_matches =
+                publisher.algorithm.as_deref() == signature.algorithm.as_deref();
+            if publisher_matches && key_matches && algorithm_matches && publisher.public_key_present
+            {
                 publisher_reference_found = true;
                 matched_publisher = Some(publisher);
                 if publisher
@@ -645,13 +751,15 @@ pub fn verify_pack_signature_metadata(
     if publisher_reference_found {
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Info,
-            message: "signature publisher/key/algorithm has a matching trust-root metadata entry".to_string(),
+            message: "signature publisher/key/algorithm has a matching trust-root metadata entry"
+                .to_string(),
         });
     } else {
         metadata_valid = false;
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Error,
-            message: "signature publisher/key/algorithm has no matching trust-root metadata entry".to_string(),
+            message: "signature publisher/key/algorithm has no matching trust-root metadata entry"
+                .to_string(),
         });
     }
 
@@ -700,7 +808,9 @@ pub fn verify_pack_signature_metadata(
             metadata_valid = false;
             findings.push(PackTrustFinding {
                 severity: PackTrustSeverity::Error,
-                message: "signature payload v1 could not be built because required fields are missing".to_string(),
+                message:
+                    "signature payload v1 could not be built because required fields are missing"
+                        .to_string(),
             });
         }
     } else {
@@ -712,7 +822,8 @@ pub fn verify_pack_signature_metadata(
 
     findings.push(PackTrustFinding {
         severity: PackTrustSeverity::Info,
-        message: "signature verification is diagnostic only and does not enforce pack loading".to_string(),
+        message: "signature verification is diagnostic only and does not enforce pack loading"
+            .to_string(),
     });
 
     let metadata_decision = if cryptographic_verification_valid {
@@ -752,7 +863,10 @@ pub fn inspect_trust_roots(project_root: &Path) -> Result<TrustRootsReport, Pack
     if !path.exists() {
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Warning,
-            message: format!("trust roots file is not present at {}", TRUST_ROOT_RELATIVE_PATH),
+            message: format!(
+                "trust roots file is not present at {}",
+                TRUST_ROOT_RELATIVE_PATH
+            ),
         });
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Info,
@@ -884,7 +998,6 @@ pub fn inspect_trust_roots(project_root: &Path) -> Result<TrustRootsReport, Pack
     })
 }
 
-
 fn require_signature_field(
     field: &str,
     value: Option<&str>,
@@ -913,7 +1026,9 @@ fn validate_signature_timestamp_field(
         *metadata_valid = false;
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Error,
-            message: format!("signature {field} is not strict UTC RFC3339 without fractional seconds"),
+            message: format!(
+                "signature {field} is not strict UTC RFC3339 without fractional seconds"
+            ),
         });
     }
 }
@@ -1015,7 +1130,10 @@ fn verify_pack_contents_manifest(
     let Some(contents) = pack.contents_manifest.as_ref() else {
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Error,
-            message: format!("{} is required for cryptographic verification", PACK_CONTENTS_FILE_NAME),
+            message: format!(
+                "{} is required for cryptographic verification",
+                PACK_CONTENTS_FILE_NAME
+            ),
         });
         return false;
     };
@@ -1040,7 +1158,9 @@ fn verify_pack_contents_manifest(
             valid = false;
             findings.push(PackTrustFinding {
                 severity: PackTrustSeverity::Error,
-                message: "pack.signature.yaml must not be included in signed content manifest entries".to_string(),
+                message:
+                    "pack.signature.yaml must not be included in signed content manifest entries"
+                        .to_string(),
             });
         }
 
@@ -1049,7 +1169,8 @@ fn verify_pack_contents_manifest(
                 valid = false;
                 findings.push(PackTrustFinding {
                     severity: PackTrustSeverity::Error,
-                    message: "content manifest paths are not sorted in deterministic order".to_string(),
+                    message: "content manifest paths are not sorted in deterministic order"
+                        .to_string(),
                 });
             }
         }
@@ -1069,7 +1190,9 @@ fn verify_pack_contents_manifest(
                 valid = false;
                 findings.push(PackTrustFinding {
                     severity: PackTrustSeverity::Error,
-                    message: "content manifest pack.yaml hash does not match loaded pack manifest hash".to_string(),
+                    message:
+                        "content manifest pack.yaml hash does not match loaded pack manifest hash"
+                            .to_string(),
                 });
             }
         }
@@ -1089,7 +1212,10 @@ fn verify_pack_contents_manifest(
                     valid = false;
                     findings.push(PackTrustFinding {
                         severity: PackTrustSeverity::Error,
-                        message: format!("content manifest path `{}` is not a regular file", entry.path),
+                        message: format!(
+                            "content manifest path `{}` is not a regular file",
+                            entry.path
+                        ),
                     });
                     continue;
                 }
@@ -1174,14 +1300,16 @@ fn verify_ed25519_signature(
     let Some(public_key_value) = public_key_value else {
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Error,
-            message: "cryptographic verification failed because trust-root public key is missing".to_string(),
+            message: "cryptographic verification failed because trust-root public key is missing"
+                .to_string(),
         });
         return false;
     };
     let Some(signature_value) = signature_value else {
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Error,
-            message: "cryptographic verification failed because signature value is missing".to_string(),
+            message: "cryptographic verification failed because signature value is missing"
+                .to_string(),
         });
         return false;
     };
@@ -1196,14 +1324,17 @@ fn verify_ed25519_signature(
     let Ok(public_key_bytes) = <[u8; 32]>::try_from(public_key_bytes.as_slice()) else {
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Error,
-            message: "cryptographic verification failed because trust-root public key is not 32 bytes".to_string(),
+            message:
+                "cryptographic verification failed because trust-root public key is not 32 bytes"
+                    .to_string(),
         });
         return false;
     };
     let Ok(verifying_key) = VerifyingKey::from_bytes(&public_key_bytes) else {
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Error,
-            message: "cryptographic verification failed because trust-root public key is invalid".to_string(),
+            message: "cryptographic verification failed because trust-root public key is invalid"
+                .to_string(),
         });
         return false;
     };
@@ -1211,14 +1342,16 @@ fn verify_ed25519_signature(
     let Ok(signature_bytes) = BASE64_STANDARD.decode(signature_value) else {
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Error,
-            message: "cryptographic verification failed because signature is not valid base64".to_string(),
+            message: "cryptographic verification failed because signature is not valid base64"
+                .to_string(),
         });
         return false;
     };
     let Ok(signature_bytes) = <[u8; 64]>::try_from(signature_bytes.as_slice()) else {
         findings.push(PackTrustFinding {
             severity: PackTrustSeverity::Error,
-            message: "cryptographic verification failed because signature is not 64 bytes".to_string(),
+            message: "cryptographic verification failed because signature is not 64 bytes"
+                .to_string(),
         });
         return false;
     };
@@ -1267,7 +1400,8 @@ fn read_contents_summary(
                     }
                     _ => findings.push(PackTrustFinding {
                         severity: PackTrustSeverity::Error,
-                        message: "pack.contents.yaml file entry is missing path or sha256".to_string(),
+                        message: "pack.contents.yaml file entry is missing path or sha256"
+                            .to_string(),
                     }),
                 }
             }
@@ -1328,7 +1462,9 @@ fn read_yaml_value(path: &Path) -> Result<Value, PackTrustError> {
 }
 
 fn yaml_string(value: &Value, key: &str) -> Option<String> {
-    yaml_get(value, key).and_then(Value::as_str).map(str::to_string)
+    yaml_get(value, key)
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }
 
 fn yaml_scalar_string(value: &Value, key: &str) -> Option<String> {
@@ -1343,7 +1479,7 @@ fn yaml_scalar_string(value: &Value, key: &str) -> Option<String> {
 fn yaml_get<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
     value
         .as_mapping()
-        .and_then(|mapping| mapping.get(&Value::String(key.to_string())))
+        .and_then(|mapping| mapping.get(Value::String(key.to_string())))
 }
 
 fn hash_file(path: &Path) -> Result<String, PackTrustError> {
@@ -1374,12 +1510,8 @@ fn safe_relative_pack_path(value: &str) -> bool {
     if value.trim().is_empty() || path.is_absolute() {
         return false;
     }
-    path.components().all(|component| {
-        matches!(
-            component,
-            Component::Normal(_) | Component::CurDir
-        )
-    })
+    path.components()
+        .all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
 }
 
 #[cfg(test)]
@@ -1422,10 +1554,9 @@ gadgets:
         assert_eq!(report.decision, "allowed_unsigned_local");
         assert_eq!(report.source_kind, PackSourceKind::ProjectLocal);
         assert!(report.signature.is_none());
-        assert!(report
-            .findings
-            .iter()
-            .any(|finding| finding.message.contains("pack.signature.yaml is not present")));
+        assert!(report.findings.iter().any(|finding| finding
+            .message
+            .contains("pack.signature.yaml is not present")));
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1504,10 +1635,12 @@ trusted_publishers:
         assert!(report.parsed);
         assert_eq!(report.version.as_deref(), Some("1"));
         assert_eq!(report.publisher_count, 1);
-        assert_eq!(report.publishers[0].publisher.as_deref(), Some("gadgets-framework"));
+        assert_eq!(
+            report.publishers[0].publisher.as_deref(),
+            Some("gadgets-framework")
+        );
         let _ = fs::remove_dir_all(root);
     }
-
 
     #[test]
     fn safe_mode_preview_allows_unsigned_local_diagnostics() {
@@ -1533,7 +1666,10 @@ gadgets:
         let report = preview_pack_trust_policy(&root, "local-pack", RuntimeMode::Safe).unwrap();
         assert!(report.would_allow_load);
         assert!(!report.would_require_verified_signature);
-        assert_eq!(report.preview_decision, "safe_allow_unsigned_or_unverified_local");
+        assert_eq!(
+            report.preview_decision,
+            "safe_allow_unsigned_or_unverified_local"
+        );
         assert!(!report.enforcement_active);
         let _ = fs::remove_dir_all(root);
     }
@@ -1559,15 +1695,18 @@ gadgets:
         )
         .unwrap();
 
-        let report = preview_pack_trust_policy(&root, "local-pack", RuntimeMode::Production).unwrap();
+        let report =
+            preview_pack_trust_policy(&root, "local-pack", RuntimeMode::Production).unwrap();
         assert!(!report.would_allow_load);
         assert!(report.would_require_verified_signature);
         assert!(report.would_require_trust_root);
-        assert_eq!(report.preview_decision, "production_deny_unverified_signature");
+        assert_eq!(
+            report.preview_decision,
+            "production_deny_unverified_signature"
+        );
         assert!(!report.enforcement_active);
         let _ = fs::remove_dir_all(root);
     }
-
 
     #[test]
     fn signature_metadata_report_validates_shape_and_trust_root_reference() {

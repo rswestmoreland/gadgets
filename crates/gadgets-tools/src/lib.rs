@@ -11,8 +11,8 @@ mod git_status;
 pub mod patch_apply;
 pub mod patch_plan;
 mod pr_body;
-mod remote_pr;
 mod redaction;
+mod remote_pr;
 
 pub use filesystem_read::{
     run_filesystem_read, FilesystemReadError, FilesystemReadReport, FilesystemReadRequest,
