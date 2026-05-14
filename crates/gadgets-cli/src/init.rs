@@ -124,6 +124,21 @@ model_profiles:
 installed_packs:
   - developer
 
+# Step 37 enables a dry-run-only pack-load trust gate. Safe Mode warns;
+# Team and Production record would-deny outcomes without blocking.
+pack_trust:
+  enabled: true
+  enforcement:
+    safe: warn-only
+    team: dry-run-deny
+    production: dry-run-deny
+  safe_mode:
+    allow_unsigned_local_packs: true
+  evidence:
+    require_for_pack_load_decisions: true
+  audit:
+    require_for_pack_load_decisions: true
+
 zones:
   local_repo:
     type: local_repo
@@ -252,6 +267,8 @@ mod tests {
         assert!(config.contains("token_env: GITHUB_TOKEN"));
         assert!(config.contains("protected_branches:"));
         assert!(config.contains("release/"));
+        assert!(config.contains("pack_trust:"));
+        assert!(config.contains("dry-run-deny"));
         assert!(config.contains(".git/"));
         assert!(config.contains(".gadgets/"));
         assert!(config.contains(".env"));

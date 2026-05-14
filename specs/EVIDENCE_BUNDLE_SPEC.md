@@ -325,3 +325,117 @@ The evidence records whether cryptographic verification was performed and whethe
 ## Step 35 signature-aware preview evidence
 
 `gadgets pack trust preview` now includes `signature_policy_inputs.txt`. This artifact records signature presence, cryptographic verification performed/valid status, content-manifest validity, signature expiration status, and trust-root expiration status. It remains diagnostic evidence only and must not be treated as an authoritative pack-load enforcement decision.
+
+## Step 36 future pack-load trust gate evidence
+
+Step 36 defines the evidence artifacts for the future dry-run and hard-deny pack-load gate.
+
+Future pack-load trust decision evidence should include:
+
+```text
+summary.md
+bundle.yaml
+pack_load_trust_decision.txt
+pack_identity.yaml
+effective_pack_sources.yaml
+pack_manifest_hash.txt
+pack_contents_summary.txt
+pack_signature_summary.yaml
+signature_policy_inputs.txt
+trust_root_summary.yaml
+trust_findings.txt
+enforcement_mode.txt
+requested_operation.txt
+rollback_guidance.txt
+```
+
+Dry-run denial should additionally include:
+
+```text
+dry_run_denial.txt
+```
+
+Hard denial should additionally include:
+
+```text
+pack_load_denial.txt
+```
+
+Evidence must not include private keys, signing seeds, API tokens, provider credentials, full secret-bearing configs, or unredacted secret values.
+
+When the future gate is active, failure to write required pack-load trust evidence for project-local or mixed-source runtime actions must fail closed.
+
+## Step 37 pack-load trust dry-run evidence
+
+Step 37 writes runtime pack-load trust evidence for warning and dry-run denial outcomes.
+
+Implemented artifacts:
+
+```text
+summary.md
+bundle.yaml
+pack_load_trust_decision.txt
+pack_identity.yaml
+effective_pack_sources.yaml
+pack_manifest_hash.txt
+pack_signature_summary.yaml
+signature_policy_inputs.txt
+trust_findings.txt
+enforcement_mode.txt
+requested_operation.txt
+rollback_guidance.txt
+```
+
+Dry-run denial additionally writes:
+
+```text
+dry_run_denial.txt
+```
+
+Step 37 does not write `pack_load_denial.txt`, because hard-deny enforcement remains deferred.
+
+If the gate is active and required evidence cannot be written for project-local or mixed-source runtime actions, the runtime fails closed before executing the Gadget action.
+
+
+## Step 38 pack-load trust gate preview evidence
+
+Step 38 reuses the pack-load trust evidence shape for diagnostic gate previews. The evidence is written by:
+
+```text
+gadgets pack trust gate-preview [--project <path>] [--operation <operation>] <pack>
+```
+
+The evidence records:
+
+- pack identity
+- effective pack source classification
+- loaded Gadget source material
+- requested operation
+- configured enforcement state
+- effective Step 37 enforcement state
+- hard-deny deferral state
+- signature policy inputs
+- trust findings
+- rollback guidance
+
+The evidence is diagnostic only. It does not prove that a Gadget action was executed and does not represent hard-deny enforcement.
+
+
+## Step 39 pack-load trust gate history evidence behavior
+
+Step 39 does not create evidence bundles.
+
+`gadgets pack trust gate-history [--project <path>] [--limit <n>]` is a read-only audit-ledger view. It reports prior pack-load trust gate events and intentionally does not write new evidence or append new audit records. Existing evidence bundles referenced by prior `evidence.created` events can still be reviewed through the normal evidence commands.
+
+
+## Step 40 pack trust gate status evidence behavior
+
+Step 40 does not create evidence bundles.
+
+`gadgets pack trust gate-status [--project <path>]` is a read-only configuration status report and must not write evidence artifacts or append evidence-created audit events.
+
+## Step 41 pack trust gate summary evidence behavior
+
+Step 41 does not create evidence bundles.
+
+`gadgets pack trust gate-summary [--project <path>]` is a read-only configuration and audit-ledger summary report. It must not write evidence artifacts or append evidence-created audit events. Existing evidence bundles referenced by prior trust-gate events remain reviewable through normal evidence commands.

@@ -70,6 +70,45 @@ impl ManifestSource {
             Self::Builtin(label) => format!("built-in:{label}"),
         }
     }
+
+    pub fn is_builtin(&self) -> bool {
+        matches!(self, Self::Builtin(_))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectivePackSourceKind {
+    Builtin,
+    ProjectLocal,
+    ProjectLocalMixed,
+}
+
+impl EffectivePackSourceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Builtin => "builtin",
+            Self::ProjectLocal => "project_local",
+            Self::ProjectLocalMixed => "project_local_mixed",
+        }
+    }
+}
+
+pub fn effective_pack_source_kind(
+    loaded_pack: &LoadedPackManifest,
+    loaded_gadgets: &[LoadedGadgetManifest],
+) -> EffectivePackSourceKind {
+    let pack_is_builtin = loaded_pack.source.is_builtin();
+    let all_gadgets_builtin = loaded_gadgets
+        .iter()
+        .all(|gadget| gadget.source.is_builtin());
+
+    if pack_is_builtin && all_gadgets_builtin {
+        EffectivePackSourceKind::Builtin
+    } else if pack_is_builtin {
+        EffectivePackSourceKind::ProjectLocalMixed
+    } else {
+        EffectivePackSourceKind::ProjectLocal
+    }
 }
 
 #[derive(Debug)]
@@ -616,6 +655,71 @@ gadgets:
             ensure_pack_installed(&["other".to_string()], DEVELOPER_PACK),
             Err(ManifestLoadError::PackNotInstalled(_))
         ));
+    }
+
+    #[test]
+    fn effective_source_builtin_when_pack_and_gadgets_are_builtin() {
+        let root = std::env::temp_dir();
+        let pack = load_pack_manifest(&root, DEVELOPER_PACK).unwrap();
+        let gadget = load_gadget_manifest(&root, &pack, FILESYSTEM_READ_GADGET).unwrap();
+        assert_eq!(
+            effective_pack_source_kind(&pack, &[gadget]),
+            EffectivePackSourceKind::Builtin
+        );
+    }
+
+    #[test]
+    fn effective_source_mixed_when_builtin_pack_has_project_gadget_override() {
+        let root = unique_temp_root("gadgets-mixed-source");
+        let gadget_dir = root.join(".gadgets/gadgets");
+        fs::create_dir_all(&gadget_dir).unwrap();
+        fs::write(
+            gadget_dir.join("filesystem.read.yaml"),
+            r#"schema_version: gadgets.framework/v0.1
+kind: Gadget
+metadata:
+  name: filesystem.read
+  version: 0.1.1
+  display_name: Local Filesystem Read Override
+  description: Local override.
+runtime:
+  model_profile: mock_default
+  execution_mode: observe
+permission_level: observe
+capabilities:
+  - repo.read
+  - file.read
+boundaries:
+  zones:
+    - local_repo
+  filesystem:
+    roots:
+      - .
+    writable: false
+    denied_paths:
+      - .gadgets/
+tools:
+  allowed:
+    - file.read
+handoffs:
+  allowed_targets:
+    - patch.writer
+evidence:
+  required:
+    - summary
+approval:
+  required_for: []
+"#,
+        )
+        .unwrap();
+
+        let pack = load_pack_manifest(&root, DEVELOPER_PACK).unwrap();
+        let gadget = load_gadget_manifest(&root, &pack, FILESYSTEM_READ_GADGET).unwrap();
+        assert_eq!(
+            effective_pack_source_kind(&pack, &[gadget]),
+            EffectivePackSourceKind::ProjectLocalMixed
+        );
+        let _ = fs::remove_dir_all(root);
     }
 
     fn unique_temp_root(prefix: &str) -> PathBuf {

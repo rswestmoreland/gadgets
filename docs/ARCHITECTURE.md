@@ -4,7 +4,7 @@ Date: 2026-05-13
 
 ## Purpose
 
-This document describes the current architecture for Gadgets Framework after Step 20 local Developer MVP hardening.
+This document describes the current architecture for Gadgets Framework after the Step 43 provider and model inventory design checkpoint.
 
 ## Concept
 
@@ -149,6 +149,19 @@ Deferred providers:
 - database
 - cloud
 
+
+
+## AI risk governance alignment
+
+Step 42 adds a docs/spec-only governance alignment model. Gadgets does not claim AI RMF compliance or certification, but its runtime controls line up with a Govern, Map, Measure, and Manage operating model:
+
+- Govern: runtime modes, policies, approvals, pack trust, decision records, evidence requirements, and audit records.
+- Map: provider profiles, installed packs, Gadget manifests, capabilities, zones, handoffs, and effective source classification.
+- Measure: evidence bundles, audit verification, policy outcomes, trust-gate counts, signature diagnostics, redaction behavior, and test results.
+- Manage: Safe Mode, approval gates, dry-run controls, future hard-deny, rollback guidance, and future incident workflows.
+
+The alignment is an engineering control map. It does not give model providers authority and does not replace runtime policy, evidence, audit, or approval gates.
+
 ## Current local Developer Pack runtime slices
 
 The current implementation includes `gadgets ask [--project <path>] <request>` for local repository inspection and plan-only Patch Writer requests. The command loads `.gadgets/config.yaml`, selects the configured provider profile, receives a structured Coordinator handoff, loads the relevant Developer Pack Gadget manifest, evaluates actions through policy, writes evidence bundles, and appends audit ledger events.
@@ -209,7 +222,7 @@ Step 27 adds non-enforcing diagnostics through `gadgets pack trust check [--proj
 
 Step 28 adds `gadgets pack trust roots [--project <path>]` as a non-mutating trust-root inspection command. It reports whether `.gadgets/trust/trusted_publishers.yaml` exists, whether it parses, its version, publisher summaries, and findings. These commands do not verify cryptographic signatures, enforce signed-pack requirements, mutate trust roots, install packs, download packs, or execute Gadgets.
 
-Step 29 defines the evidence and audit contract for pack trust decisions, trust-root loading, signature verification, and pack-load denials. Step 30 emits diagnostic evidence bundles and audit events for `gadgets pack trust check` and `gadgets pack trust roots`. Step 31 adds `gadgets pack trust preview [--project <path>] [--mode safe|team|production] <pack>` to preview future Safe/Team/Production policy outcomes without enforcing them. Step 34 adds non-enforcing Ed25519 verification diagnostics to `gadgets pack trust signature`. Step 35 makes policy preview consume the real signature diagnostic result while remaining non-enforcing. Pack trust enforcement is not implemented yet.
+Step 29 defines the evidence and audit contract for pack trust decisions, trust-root loading, signature verification, and pack-load denials. Step 30 emits diagnostic evidence bundles and audit events for `gadgets pack trust check` and `gadgets pack trust roots`. Step 31 adds `gadgets pack trust preview [--project <path>] [--mode safe|team|production] <pack>` to preview future Safe/Team/Production policy outcomes without enforcing them. Step 34 adds non-enforcing Ed25519 verification diagnostics to `gadgets pack trust signature`. Step 35 makes policy preview consume the real signature diagnostic result while remaining non-enforcing. Step 37 adds dry-run runtime pack-load trust warning and would-deny recording, while hard-deny enforcement remains deferred.
 
 ## Pack validation boundary
 
@@ -277,3 +290,90 @@ This creates an observable verification result before any future Team/Production
 Step 35 updates the non-enforcing pack trust policy preview so it consumes the same signature metadata, content manifest, trust-root, expiration, and Ed25519 verification results produced by `gadgets pack trust signature`.
 
 Safe Mode remains developer-friendly and previews local packs as allowed with warnings when signatures are not verified. Team and Production previews allow only valid trusted signatures diagnostically. Runtime pack loading is not enforced by this step.
+
+## Step 36 pack trust enforcement design boundary
+
+Step 36 defines the future pack-load trust gate but does not implement enforcement.
+
+The architecture now distinguishes pack trust diagnostics from future pack-load gating:
+
+```text
+pack source + effective loaded manifests
+  -> effective source classification
+      -> signature/trust-root diagnostics
+          -> runtime mode enforcement state
+              -> warn-only, dry-run-deny, or hard-deny decision
+                  -> evidence bundle
+                      -> audit ledger
+```
+
+The most important architectural rule is effective source classification. A pack is effectively built-in only when the pack manifest and every loaded Gadget manifest come from built-in runtime assets. If a built-in pack uses project-local Gadget overrides, the effective source becomes `project_local_mixed` and must follow project-local trust rules.
+
+Step 36 kept enforcement deferred. Step 37 adds the first runtime dry-run gate: warning and would-deny outcomes write evidence and audit, but pack loading is not blocked by trust decision alone. Step 38 adds a preview command for configured gate outcomes. Step 39 adds a read-only gate history command over prior audit events. Step 40 adds a read-only gate status command for current configuration posture. Step 41 adds a read-only gate summary command for trust-gate event counts and review posture. Hard-deny remains deferred until dry-run evidence has been reviewed and explicitly approved.
+
+## Step 37 pack-load trust dry-run gate
+
+The Step 37 gate is called after the runtime loads the relevant pack and Gadget manifests, but before the corresponding Gadget action executes. This allows the runtime to classify the effective loaded material instead of trusting only `pack.yaml`.
+
+Current insertion points are the implemented Developer Pack runtime operations: `ask`, Git status, protected branch creation, approved commit, PR body generation, guarded remote PR creation, allowlisted test run, and approved patch apply.
+
+The gate writes evidence and audit for `pack.trust.warning` and `pack.trust.dry_run_denied` outcomes. If required evidence or audit cannot be written for project-local or mixed-source material, the runtime fails closed and does not continue to the Gadget action. Fully built-in material is allowed without additional dry-run evidence.
+
+Configured `hard-deny` is treated as `dry-run-deny` in Step 37. No `pack.trust.denied` or `pack.load.denied` runtime enforcement is implemented yet.
+
+
+## Step 39 pack-load trust gate history
+
+Step 39 adds read-only operator review for pack-load trust gate outcomes:
+
+```text
+gadgets pack trust gate-history [--project <path>] [--limit <n>]
+```
+
+The command reads `.gadgets/ledger/events.jsonl` and filters pack-load trust gate event types. It does not execute Gadgets, write evidence, append audit records, mutate trust roots, install packs, download packs, or hard-deny loading.
+
+
+## Step 40 pack trust gate status
+
+Step 40 adds read-only operator review for the configured pack-load trust gate posture:
+
+- command: `gadgets pack trust gate-status [--project <path>]`
+- reports active runtime mode from `.gadgets/config.yaml`
+- reports configured and effective Step 37 enforcement states for Safe, Team, and Production
+- reports hard-deny deferral
+- reports Safe Mode unsigned-local behavior
+- reports evidence/audit requirements and installed packs
+
+This command does not load pack manifests, verify signatures, write evidence, append audit events, execute Gadgets, or enforce hard-deny pack loading.
+
+
+## Step 41 pack trust gate summary
+
+Step 41 adds read-only operator review for summarized trust-gate outcomes:
+
+- command: `gadgets pack trust gate-summary [--project <path>]`
+- reads active runtime mode from `.gadgets/config.yaml`
+- reads `.gadgets/ledger/events.jsonl`
+- counts pack-load trust gate previews, warnings, dry-run denials, future hard denials, and future pack-load denials
+- reports a hard-deny review posture string
+
+This command does not load pack manifests, verify signatures, write evidence, append audit events, execute Gadgets, or enforce hard-deny pack loading. It is intended to help operators review dry-run posture before any future enforcement decision.
+
+
+## Step 42 AI RMF alignment and governance profile
+
+Step 42 adds a docs/spec-only AI RMF alignment model. It maps Gadgets controls to Govern, Map, Measure, and Manage without making a compliance or certification claim.
+
+The architecture remains LLM-agnostic. Models can reason and propose, but the runtime remains the authority boundary for actions, policy, evidence, audit, approvals, and pack trust gates.
+
+## Step 43 provider and model inventory design
+
+Step 43 adds a docs/spec-only provider and model inventory design. The inventory complements existing `model_profiles` by recording governance metadata around provider use.
+
+Current model profiles answer how the runtime calls a provider profile. The future inventory answers why that provider profile is approved, where it may be used, and what data labels it may receive.
+
+The design reserves future inventory fields for provider status, review status, approved runtime modes, network posture, credential environment variable name, allowed and denied data labels, model profile purpose, allowed task kinds, allowed packs, allowed Gadgets, and retention notes.
+
+Provider/model inventory must not store API key values, tokens, private keys, signing material, or raw secret-bearing config. Environment variable names may be recorded because they describe configuration shape, not secret values.
+
+Step 43 does not add runtime enforcement. Future enforcement should follow the same migration pattern as pack trust: read-only reporting first, evidence-backed reporting next, warning-only or dry-run checks after review, and hard-deny only after explicit approval.

@@ -29,6 +29,8 @@ pub struct RuntimeConfig {
     pub test_commands: Vec<TestCommandConfig>,
     #[serde(default)]
     pub git: GitConfig,
+    #[serde(default)]
+    pub pack_trust: PackTrustConfig,
 }
 
 impl RuntimeConfig {
@@ -101,6 +103,7 @@ impl RuntimeConfig {
 
         validate_test_commands(&self.test_commands)?;
         validate_git_config(&self.git)?;
+        validate_pack_trust_config(&self.pack_trust)?;
 
         Ok(())
     }
@@ -186,6 +189,132 @@ pub struct ModelProfileConfig {
     pub endpoint: Option<String>,
 }
 
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct PackTrustConfig {
+    #[serde(default = "default_pack_trust_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub enforcement: PackTrustEnforcementConfig,
+    #[serde(default)]
+    pub safe_mode: PackTrustSafeModeConfig,
+    #[serde(default)]
+    pub evidence: PackTrustEvidenceConfig,
+    #[serde(default)]
+    pub audit: PackTrustAuditConfig,
+}
+
+impl Default for PackTrustConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_pack_trust_enabled(),
+            enforcement: PackTrustEnforcementConfig::default(),
+            safe_mode: PackTrustSafeModeConfig::default(),
+            evidence: PackTrustEvidenceConfig::default(),
+            audit: PackTrustAuditConfig::default(),
+        }
+    }
+}
+
+impl PackTrustConfig {
+    pub fn state_for_mode(&self, mode: RuntimeMode) -> PackTrustEnforcementState {
+        match mode {
+            RuntimeMode::Safe => self.enforcement.safe,
+            RuntimeMode::Team => self.enforcement.team,
+            RuntimeMode::Production => self.enforcement.production,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PackTrustEnforcementState {
+    Off,
+    WarnOnly,
+    DryRunDeny,
+    HardDeny,
+}
+
+impl PackTrustEnforcementState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::WarnOnly => "warn-only",
+            Self::DryRunDeny => "dry-run-deny",
+            Self::HardDeny => "hard-deny",
+        }
+    }
+
+    pub fn effective_step37_state(self) -> Self {
+        match self {
+            Self::HardDeny => Self::DryRunDeny,
+            other => other,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct PackTrustEnforcementConfig {
+    #[serde(default = "default_pack_trust_safe_enforcement")]
+    pub safe: PackTrustEnforcementState,
+    #[serde(default = "default_pack_trust_team_enforcement")]
+    pub team: PackTrustEnforcementState,
+    #[serde(default = "default_pack_trust_production_enforcement")]
+    pub production: PackTrustEnforcementState,
+}
+
+impl Default for PackTrustEnforcementConfig {
+    fn default() -> Self {
+        Self {
+            safe: default_pack_trust_safe_enforcement(),
+            team: default_pack_trust_team_enforcement(),
+            production: default_pack_trust_production_enforcement(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct PackTrustSafeModeConfig {
+    #[serde(default = "default_true")]
+    pub allow_unsigned_local_packs: bool,
+}
+
+impl Default for PackTrustSafeModeConfig {
+    fn default() -> Self {
+        Self {
+            allow_unsigned_local_packs: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct PackTrustEvidenceConfig {
+    #[serde(default = "default_true")]
+    pub require_for_pack_load_decisions: bool,
+}
+
+impl Default for PackTrustEvidenceConfig {
+    fn default() -> Self {
+        Self {
+            require_for_pack_load_decisions: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct PackTrustAuditConfig {
+    #[serde(default = "default_true")]
+    pub require_for_pack_load_decisions: bool,
+}
+
+impl Default for PackTrustAuditConfig {
+    fn default() -> Self {
+        Self {
+            require_for_pack_load_decisions: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectedModelProfile<'a> {
     pub name: &'a str,
@@ -208,6 +337,7 @@ pub enum ConfigError {
     InvalidTestCommand(String),
     DuplicateTestCommand(String),
     InvalidGitConfig(String),
+    InvalidPackTrustConfig(String),
     ProviderNotImplemented(String),
 }
 
@@ -237,6 +367,7 @@ impl fmt::Display for ConfigError {
             Self::InvalidTestCommand(value) => write!(f, "invalid test command: {value}"),
             Self::DuplicateTestCommand(value) => write!(f, "duplicate test command name: {value}"),
             Self::InvalidGitConfig(value) => write!(f, "invalid git config: {value}"),
+            Self::InvalidPackTrustConfig(value) => write!(f, "invalid pack trust config: {value}"),
             Self::ProviderNotImplemented(value) => write!(
                 f,
                 "provider `{value}` is configured but not implemented; supported providers are mock, openai, and anthropic"
@@ -318,6 +449,26 @@ pub fn valid_test_command_name(input: &str) -> bool {
         && input
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_pack_trust_enabled() -> bool {
+    true
+}
+
+fn default_pack_trust_safe_enforcement() -> PackTrustEnforcementState {
+    PackTrustEnforcementState::WarnOnly
+}
+
+fn default_pack_trust_team_enforcement() -> PackTrustEnforcementState {
+    PackTrustEnforcementState::DryRunDeny
+}
+
+fn default_pack_trust_production_enforcement() -> PackTrustEnforcementState {
+    PackTrustEnforcementState::DryRunDeny
 }
 
 fn default_remote_pr_dry_run() -> bool {
@@ -479,6 +630,16 @@ fn validate_remote_pr_config(config: &RemotePrConfig) -> Result<(), ConfigError>
     Ok(())
 }
 
+fn validate_pack_trust_config(config: &PackTrustConfig) -> Result<(), ConfigError> {
+    if config.enforcement.safe == PackTrustEnforcementState::HardDeny {
+        return Err(ConfigError::InvalidPackTrustConfig(
+            "safe enforcement must not be hard-deny".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 fn valid_remote_repo_component(input: &str) -> bool {
     !input.is_empty()
         && input.trim() == input
@@ -601,6 +762,98 @@ model_profiles:
         assert_eq!(selected.name, "mock_default");
         assert_eq!(selected.profile.provider, "mock");
         assert_eq!(selected.profile.api_key_env, None);
+    }
+
+    #[test]
+    fn defaults_pack_trust_to_step37_safe_values() {
+        let config = RuntimeConfig::from_yaml_str(
+            r#"schema_version: gadgets.framework/config/v0.1
+mode: team
+default_model_profile: mock_default
+model_profiles:
+  mock_default:
+    provider: mock
+    model: deterministic-mock
+"#,
+        )
+        .unwrap();
+
+        assert!(config.pack_trust.enabled);
+        assert_eq!(
+            config.pack_trust.state_for_mode(RuntimeMode::Safe),
+            PackTrustEnforcementState::WarnOnly
+        );
+        assert_eq!(
+            config.pack_trust.state_for_mode(RuntimeMode::Team),
+            PackTrustEnforcementState::DryRunDeny
+        );
+        assert_eq!(
+            config.pack_trust.state_for_mode(RuntimeMode::Production),
+            PackTrustEnforcementState::DryRunDeny
+        );
+        assert!(config.pack_trust.safe_mode.allow_unsigned_local_packs);
+        assert!(config.pack_trust.evidence.require_for_pack_load_decisions);
+        assert!(config.pack_trust.audit.require_for_pack_load_decisions);
+    }
+
+    #[test]
+    fn parses_pack_trust_config_shape() {
+        let config = RuntimeConfig::from_yaml_str(
+            r#"schema_version: gadgets.framework/config/v0.1
+mode: production
+default_model_profile: mock_default
+model_profiles:
+  mock_default:
+    provider: mock
+    model: deterministic-mock
+pack_trust:
+  enabled: true
+  enforcement:
+    safe: warn-only
+    team: dry-run-deny
+    production: hard-deny
+  safe_mode:
+    allow_unsigned_local_packs: false
+  evidence:
+    require_for_pack_load_decisions: true
+  audit:
+    require_for_pack_load_decisions: true
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.pack_trust.state_for_mode(RuntimeMode::Production),
+            PackTrustEnforcementState::HardDeny
+        );
+        assert_eq!(
+            config
+                .pack_trust
+                .state_for_mode(RuntimeMode::Production)
+                .effective_step37_state(),
+            PackTrustEnforcementState::DryRunDeny
+        );
+        assert!(!config.pack_trust.safe_mode.allow_unsigned_local_packs);
+    }
+
+    #[test]
+    fn rejects_safe_mode_hard_deny_pack_trust() {
+        let err = RuntimeConfig::from_yaml_str(
+            r#"schema_version: gadgets.framework/config/v0.1
+mode: safe
+default_model_profile: mock_default
+model_profiles:
+  mock_default:
+    provider: mock
+    model: deterministic-mock
+pack_trust:
+  enforcement:
+    safe: hard-deny
+"#,
+        )
+        .unwrap_err();
+
+        assert!(matches!(err, ConfigError::InvalidPackTrustConfig(_)));
     }
 
     #[test]

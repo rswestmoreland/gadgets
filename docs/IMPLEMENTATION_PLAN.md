@@ -13,20 +13,20 @@ The goal is a trustworthy, auditable authority boundary where provider output re
 Current source checkpoint:
 
 ```text
-Step 35 - pack trust policy preview with signature results
-validation status: external Rust validation passed after bounded fixes
-validated commit: 14b0a4f
-validation date: 2026-05-13
+Step 43 - Provider and model inventory design
+source baseline: Step 42 AI RMF governance profile checkpoint based on Step 35 externally validated commit 14b0a4f
+Step 43 change type: docs/spec/config-example update only
+validation status: ready for external Rust validation in Codex
 ```
 
-External Rust validation passed end-to-end on the current Step 35 baseline:
+External Rust validation passed end-to-end on the Step 35 source baseline. Steps 37 through 41 require a new external validation run now. Steps 42 and 43 are docs/spec only. Required commands:
 
 ```text
-cargo fmt --check                                      PASS
-cargo check                                           PASS
-cargo test                                            PASS
-cargo clippy --all-targets --all-features -- -D warnings  PASS
-cargo build --release                                 PASS
+cargo fmt --check
+cargo check
+cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+cargo build --release
 ```
 
 Validation environment reported by Codex:
@@ -323,7 +323,7 @@ Purpose:
 
 ### Step 24 - Remote PR safety hardening
 
-Status: complete at checkpoint/code level. Rust validation should be rerun after this code change.
+Status: complete and included in validated commit `14b0a4f`.
 
 Completed:
 
@@ -340,7 +340,7 @@ Completed:
 
 ### Step 25 - Secret/output redaction hardening
 
-Status: complete at checkpoint/code level. Rust validation should be rerun after this code change.
+Status: complete and included in validated commit `14b0a4f`.
 
 Completed:
 
@@ -371,7 +371,7 @@ Completed:
 
 ### Step 27 - Pack trust inspection scaffold
 
-Status: complete at checkpoint/code level. Rust validation should be rerun after this code change.
+Status: complete and included in validated commit `14b0a4f`.
 
 Implemented:
 
@@ -490,4 +490,183 @@ Step 35 updates `gadgets pack trust preview [--project <path>] [--mode safe|team
 
 Safe Mode continues to allow local development packs with warnings. Team and Production previews allow only valid trusted signatures diagnostically. The command remains non-enforcing and does not change pack loading behavior.
 
-Next recommended step: Step 36 - pack trust enforcement design and dry-run gate plan.
+Step 36 is complete as a docs-first design checkpoint. Step 37 implements the approved narrow dry-run-only pack-load trust gate.
+
+## Step 36 - Pack trust enforcement design and dry-run gate plan
+
+Status: complete as docs-first design. No Rust source code changed.
+
+Step 36 defines the future pack-load trust enforcement path without adding enforcement code.
+
+Completed:
+
+- defined enforcement states: `off`, `warn-only`, `dry-run-deny`, and `hard-deny`
+- defined Safe, Team, and Production behavior
+- defined effective source classification for built-in, project-local, and mixed-source pack material
+- defined unsigned local pack handling
+- defined invalid, expired, mismatched, and unknown signature handling
+- defined future `pack_trust` config shape and safe defaults
+- defined future audit events and evidence artifacts
+- defined fail-closed behavior when required evidence or audit cannot be written
+- defined rollback behavior
+- listed test plan names only
+
+Boundary: Step 36 does not implement pack-load denial, signing tools, trust-root mutation, pack install/update, registry downloads, Linux admin behavior, database behavior, cloud behavior, deployment behavior, broader Git behavior, or provider-side action bypass.
+
+Step 37 implements the approved narrow dry-run-only pack-load trust gate. Hard-deny enforcement remains deferred until dry-run evidence has been reviewed and explicitly approved.
+
+## Step 37 - Pack load trust dry-run gate
+
+Status: implemented at checkpoint level; external Rust validation pending.
+
+Step 37 adds parsed `pack_trust` config, effective source classification, and a dry-run-only pack-load gate before implemented Developer Pack runtime actions.
+
+Completed:
+
+- added `pack_trust` config parsing and defaults
+- added enforcement states `off`, `warn-only`, `dry-run-deny`, and `hard-deny`
+- treats configured `hard-deny` as `dry-run-deny` at runtime for this step
+- rejects Safe Mode `hard-deny` config
+- added `builtin`, `project_local`, and `project_local_mixed` effective source classification
+- treats built-in pack plus project-local Gadget override as mixed-source
+- inserted the gate before `ask`, Git, PR, test, and patch-apply runtime operations
+- writes evidence and audit for warning and dry-run denial outcomes
+- fails closed if required pack-load trust evidence or audit cannot be written for project-local or mixed-source runtime actions
+
+Boundary: Step 37 does not add hard-deny pack-load enforcement, signing tools, trust-root mutation, pack install/update, registry downloads, Linux admin behavior, database behavior, cloud behavior, deployment behavior, broader Git behavior, or provider-side action bypass.
+
+Recommended next step: run the full external Rust validation flow in Codex before adding more runtime behavior; do not add hard-deny behavior until dry-run evidence is reviewed and explicitly approved.
+
+
+## Step 38 - Pack load trust gate preview reporting
+
+Status: implemented at checkpoint level; external Rust validation deferred.
+
+Step 38 adds:
+
+```bash
+gadgets pack trust gate-preview [--project <path>] [--operation <operation>] <pack>
+```
+
+Completed:
+
+- added a pure pack-load trust gate decision helper
+- reused the helper in the runtime dry-run gate
+- added an operator-facing gate preview command
+- added operation-specific Developer Pack Gadget source selection for preview reporting
+- reports configured enforcement, effective Step 37 enforcement, hard-deny deferral, effective source kind, signature coverage, and loaded Gadget sources
+- writes diagnostic evidence and appends `pack.trust.gate.previewed` plus `evidence.created` audit events
+- added unit-test coverage for core gate decision outcomes and operation-to-Gadget mapping
+
+Boundary: Step 38 does not add hard-deny pack-load enforcement, signing tools, trust-root mutation, pack install/update, registry downloads, Linux admin behavior, database behavior, cloud behavior, deployment behavior, broader Git behavior, or provider-side action bypass.
+
+
+## Step 39 - Pack load trust gate history reporting
+
+Status: implemented at checkpoint level; external Rust validation deferred.
+
+Step 39 adds:
+
+```bash
+gadgets pack trust gate-history [--project <path>] [--limit <n>]
+```
+
+Completed:
+
+- added a read-only pack-load trust gate history command
+- reads the local append-only audit ledger
+- filters `pack.trust.warning`, `pack.trust.dry_run_denied`, `pack.trust.gate.previewed`, `pack.trust.denied`, and `pack.load.denied`
+- excludes `evidence.created` so the report stays focused on trust-gate decisions
+- prints timestamp, event type, decision, run id, target, and summary
+- added test coverage for the event filter
+
+Boundary: Step 39 does not add hard-deny pack-load enforcement, signing tools, trust-root mutation, pack install/update, registry downloads, Linux admin behavior, database behavior, cloud behavior, deployment behavior, broader Git behavior, or provider-side action bypass.
+
+
+## Step 40 - Pack trust gate status reporting
+
+Goal: add a read-only status command for the configured pack-load trust gate posture.
+
+Step 40 adds:
+
+- `gadgets pack trust gate-status [--project <path>]`
+- active runtime mode reporting
+- configured and effective Step 37 enforcement reporting for Safe, Team, and Production
+- hard-deny deferral reporting
+- pack-trust enabled state reporting
+- Safe Mode unsigned-local behavior reporting
+- evidence/audit requirement reporting
+- installed pack and ledger path reporting
+
+Boundary: Step 40 does not add hard-deny pack-load enforcement, signing tools, signature verification changes, trust-root mutation, pack install/update, registry downloads, Linux admin behavior, database behavior, cloud behavior, deployment behavior, broader Git behavior, or provider-side action bypass.
+
+
+## Step 41 - Pack trust gate summary reporting
+
+Goal: add a read-only summary command for prior pack-load trust gate outcomes and hard-deny review posture.
+
+Step 41 adds:
+
+- `gadgets pack trust gate-summary [--project <path>]`
+- local configuration posture reporting for the active runtime mode
+- local audit-ledger summary counts for pack-load trust gate events
+- a review posture string for future hard-deny discussion
+- unit-test coverage for event counts and posture behavior
+
+Boundary: Step 41 does not add hard-deny pack-load enforcement, signing tools, signature verification changes, trust-root mutation, pack install/update, registry downloads, Linux admin behavior, database behavior, cloud behavior, deployment behavior, broader Git behavior, evidence writes, audit appends, or provider-side action bypass.
+
+Status: implemented at checkpoint level; external Rust validation deferred.
+
+
+## Step 42 - AI RMF alignment and governance profile design
+
+Goal: add a docs/spec-only governance alignment model for NIST AI RMF-inspired operating controls.
+
+Step 42 adds:
+
+- `docs/STEP_42_AI_RMF_ALIGNMENT_GOVERNANCE_PROFILE.md`
+- `specs/AI_RMF_GOVERNANCE_PROFILE_SPEC.md`
+- an engineering map from Gadgets controls to Govern, Map, Measure, and Manage
+- future config shape for AI risk governance
+- future CLI shape for AI risk reporting
+- future data exposure labels
+- future AI risk incident classes
+- future evidence and audit vocabulary
+
+Boundary: Step 42 does not add runtime code, CLI commands, provider authority, hard-deny enforcement, signing tools, trust-root mutation, pack install/update behavior, registry downloads, Linux admin behavior, database behavior, cloud behavior, deployment behavior, broader Git behavior, or compliance claims.
+
+
+## Step 43 - Provider and model inventory design
+
+Goal: add a docs/spec-only provider and model inventory contract for AI RMF-style mapping and governance.
+
+Step 43 adds:
+
+- `docs/STEP_43_PROVIDER_MODEL_INVENTORY_DESIGN.md`
+- `specs/PROVIDER_MODEL_INVENTORY_SPEC.md`
+- future `ai_risk.provider_model_inventory` config shape
+- provider status and review status vocabulary
+- model profile inventory shape tied to existing `model_profiles` entries
+- data exposure labels and denied-data-label semantics
+- future report posture, evidence artifact, and audit event names
+
+Boundary: Step 43 does not add runtime code, CLI commands, provider calls, provider disablement, data exposure enforcement, compliance claims, credential storage, hard-deny pack-load enforcement, signing tools, trust-root mutation, pack install/update behavior, registry downloads, Linux admin behavior, database behavior, cloud behavior, deployment behavior, broader Git behavior, or provider-side action bypass.
+
+Status: complete as docs/spec/config-example checkpoint. External Rust validation is now the immediate next action because Steps 37 through 41 changed Rust source after the Step 35 validated baseline.
+
+
+## Step 43 pre-validation review and drift cleanup
+
+Goal: prepare the Step 43 tree for external Rust validation in Codex.
+
+Completed:
+
+- reviewed current source/docs/specs/config examples at checkpoint level
+- confirmed Step 43 itself is docs/spec/config-example only
+- confirmed Steps 37 through 41 are the post-validation source-change set that needs validation
+- updated active roadmap/planning language so validation is the immediate next action
+- added `docs/STEP_43_PRE_VALIDATION_REVIEW.md`
+- added `docs/project/GADGETS_FRAMEWORK_CODEX_PROMPT_STEP43_VALIDATION_2026_05_13.md`
+- regenerated `FILE_MANIFEST.txt`
+
+Boundary: this checkpoint does not add runtime code, CLI behavior, provider calls, hard-deny enforcement, signing tools, trust-root mutation, pack install/update behavior, registry downloads, Linux admin behavior, database behavior, cloud behavior, deployment behavior, broader Git behavior, or provider-side action bypass.

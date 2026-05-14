@@ -150,7 +150,7 @@ Boundaries:
 - no Team/Production enforcement
 - no Gadget execution
 
-Status: complete at checkpoint/code level; Rust validation should be rerun after Step 27.
+Status: complete and included in validated commit `14b0a4f`.
 ## Step 28 - Trust root inspection scaffold
 
 Decision: add a non-enforcing `gadgets pack trust roots [--project <path>]` diagnostic path before trust-root mutation, signature verification, or Team/Production enforcement.
@@ -263,3 +263,107 @@ Locked outcome: Step 35 source is the current validated baseline. Commit `c5fbd7
 
 Boundary: the validation fixes did not add new feature scope, arbitrary shell, remote Git expansion, pack trust enforcement, signing tools, trust-root mutation, Linux admin behavior, database behavior, cloud behavior, or deployment behavior.
 
+## Step 36 - Pack trust enforcement design and dry-run gate plan
+
+Decision: lock the pack trust enforcement model as a docs-first design before implementing a pack-load gate.
+
+Rationale: Step 35 already has signature-aware policy preview diagnostics. Before enforcement code is added, the project needs exact behavior for Safe, Team, and Production modes, exact enforcement states, effective source classification, evidence/audit requirements, and failure behavior.
+
+Locked outcomes:
+
+- Future enforcement states are `off`, `warn-only`, `dry-run-deny`, and `hard-deny`.
+- Safe Mode defaults to `warn-only` for local development behavior.
+- Team Mode should start with `dry-run-deny` for non-built-in trust failures.
+- Production Mode should start with `dry-run-deny`; hard-deny requires later explicit approval.
+- A pack is effectively built-in only when the pack manifest and every loaded Gadget manifest are built-in runtime assets.
+- A built-in pack with project-local Gadget overrides is `project_local_mixed` and follows project-local trust rules.
+- Invalid, mismatched, expired, unknown, or untrusted signatures are deny outcomes in Team/Production dry-run and hard-deny modes.
+- Pack-load trust decisions need evidence and audit before runtime actions proceed once the gate is active.
+- If required pack-load trust evidence or audit cannot be written, runtime actions for project-local or mixed-source packs must fail closed.
+
+Boundary: Step 36 is docs/spec/config-example only. It does not add runtime pack-load denial, signing tools, trust-root mutation, pack install/update behavior, registry downloads, broader Git behavior, Linux admin behavior, database behavior, cloud behavior, deployment behavior, or provider-side action bypass.
+
+## Step 37 - Pack load trust dry-run gate
+
+Decision: implement the first narrow runtime pack-load trust gate as dry-run only.
+
+Rationale: pack trust needs runtime visibility before hard enforcement. Dry-run gating allows Safe, Team, and Production projects to collect evidence about which project-local or mixed-source packs would be warned or denied before operators enable hard-deny behavior.
+
+Locked outcome: Step 37 evaluates effective loaded pack material before implemented Developer Pack runtime actions. Fully built-in pack and Gadget material is allowed. Project-local and mixed-source material is checked through signature-aware preview diagnostics. Safe Mode records warnings for unverified local material. Team and Production record dry-run denials for unverified local or mixed-source material. Hard-deny config is represented but treated as dry-run-deny in this step.
+
+Boundary: Step 37 does not add hard-deny enforcement, signing tools, trust-root mutation, pack install/update, registry downloads, Linux admin behavior, database behavior, cloud behavior, deployment behavior, broader Git behavior, or provider-side action bypass.
+
+## Step 38 - Pack load trust gate preview reporting
+
+Decision: add a diagnostic command that previews the configured runtime pack-load trust gate outcome for an installed pack and optional Developer Pack operation.
+
+Rationale: Step 37 writes dry-run evidence only when a runtime action is attempted. Operators also need a safe way to inspect the same gate logic before executing a Gadget action, especially for mixed-source packs and Team/Production dry-run configurations.
+
+Locked outcome: `gadgets pack trust gate-preview [--project <path>] [--operation <operation>] <pack>` reports effective source classification, loaded Gadget sources, configured enforcement, effective Step 37 enforcement, hard-deny deferral, signature coverage, and the resulting gate action. The command writes diagnostic evidence and appends `pack.trust.gate.previewed` plus `evidence.created` audit records.
+
+Boundary: Step 38 does not execute Gadgets, hard-deny pack loading, add signing tools, mutate trust roots, install packs, download packs, add Linux admin behavior, add database behavior, add cloud behavior, add deployment behavior, broaden Git behavior, or allow provider-side action bypass.
+
+
+## Step 39 - Pack load trust gate history reporting
+
+Decision: add a read-only command that reports prior pack-load trust gate outcomes from the audit ledger.
+
+Rationale: Step 37 records warning and dry-run denial events only when runtime actions are attempted, and Step 38 records preview events. Operators need a focused way to review these outcomes without scanning the full ledger and without executing another Gadget action.
+
+Locked outcome: `gadgets pack trust gate-history [--project <path>] [--limit <n>]` reads `.gadgets/ledger/events.jsonl`, filters pack-load trust gate event types, and prints timestamp, event type, decision, run id, target, and summary. The command is read-only and does not write evidence or append audit events.
+
+Boundary: Step 39 does not execute Gadgets, hard-deny pack loading, add signing tools, mutate trust roots, install packs, download packs, add Linux admin behavior, add database behavior, add cloud behavior, add deployment behavior, broaden Git behavior, or allow provider-side action bypass.
+
+
+## Step 40 - Pack trust gate status reporting
+
+Decision: add read-only pack trust gate status reporting.
+
+Rationale: Step 37 records runtime dry-run outcomes, Step 38 previews a specific pack and operation, and Step 39 reports prior trust-gate events. Operators also need a lightweight view of the current configured trust-gate posture before running any pack-specific preview or Gadget action.
+
+Implementation: `gadgets pack trust gate-status [--project <path>]` reads `.gadgets/config.yaml` and prints runtime mode, enabled state, configured/effective Step 37 enforcement for Safe/Team/Production, hard-deny deferral, Safe Mode unsigned-local behavior, evidence/audit requirements, installed packs, and ledger path.
+
+Boundary: Step 40 does not execute Gadgets, write evidence, append audit events, hard-deny pack loading, add signing tools, mutate trust roots, install packs, download packs, add Linux admin behavior, add database behavior, add cloud behavior, add deployment behavior, broaden Git behavior, or allow provider-side action bypass.
+
+## Step 41 - Pack trust gate summary reporting
+
+Decision: add read-only pack trust gate summary reporting.
+
+Rationale: Step 37 records runtime dry-run outcomes, Step 38 previews a specific pack and operation, Step 39 reports prior trust-gate events, and Step 40 reports configured gate posture. Operators also need a compact summary of local trust-gate history and a posture signal before any future hard-deny discussion.
+
+Implementation: `gadgets pack trust gate-summary [--project <path>]` reads `.gadgets/config.yaml` and `.gadgets/ledger/events.jsonl`, counts pack-load trust gate preview, warning, dry-run denial, future hard-denial, and future pack-load denial events, and prints a review posture string.
+
+Boundary: Step 41 does not execute Gadgets, write evidence, append audit records, hard-deny pack loading, add signing tools, mutate trust roots, install packs, download packs, add Linux admin behavior, add database behavior, add cloud behavior, add deployment behavior, broaden Git behavior, or allow provider-side action bypass.
+
+
+## Step 42 - AI RMF alignment and governance profile design
+
+Decision: add a docs/spec-only AI RMF alignment and governance profile design.
+
+Rationale: Gadgets Framework already uses runtime-enforced authority boundaries, least privilege, approval gates, evidence, audit, pack trust, and dry-run/hard-deny states. These controls align naturally with NIST AI RMF-style Govern, Map, Measure, and Manage functions. Capturing the alignment now helps future work add inventory, metrics, incident handling, and data exposure controls without weakening the runtime boundary.
+
+Locked outcome: `docs/STEP_42_AI_RMF_ALIGNMENT_GOVERNANCE_PROFILE.md` and `specs/AI_RMF_GOVERNANCE_PROFILE_SPEC.md` define a non-compliance-claim engineering map for AI risk governance. The design reserves future config, CLI, evidence, audit, data label, incident, and posture vocabulary.
+
+Boundary: Step 42 does not execute Gadgets, write evidence, append audit records, add runtime code, add CLI commands, make a compliance claim, hard-deny pack loading, add signing tools, mutate trust roots, install packs, download packs, add Linux admin behavior, add database behavior, add cloud behavior, add deployment behavior, broaden Git behavior, or allow provider-side action bypass.
+
+
+## Step 43 - Provider and model inventory design
+
+Decision: add a docs/spec-only provider and model inventory contract.
+
+Rationale: Gadgets Framework is provider-neutral and LLM-agnostic. Existing model profiles define how the runtime calls a provider, but operators also need to know why a provider/model profile is approved, which runtime modes may use it, which packs or Gadgets may use it, and which data labels may be sent to it. This supports AI RMF-style Map and Govern functions without weakening the runtime authority boundary.
+
+Locked outcome: `specs/PROVIDER_MODEL_INVENTORY_SPEC.md` defines provider records, model profile inventory records, status and review values, data exposure labels, future evidence artifacts, audit events, report posture values, and a staged migration path from read-only reporting to warning/dry-run checks.
+
+Boundary: Step 43 does not execute Gadgets, call providers, add runtime commands, store provider credentials, enforce data exposure, make compliance claims, hard-deny pack loading, add signing tools, mutate trust roots, install packs, download packs, add Linux admin behavior, add database behavior, add cloud behavior, add deployment behavior, broaden Git behavior, or allow provider-side action bypass.
+
+
+## Step 43 pre-validation review and drift cleanup
+
+Decision: pause feature work and prepare the Step 43 tree for the next external Rust validation pass.
+
+Rationale: Steps 37 through 41 introduced Rust source changes after the Step 35 validated baseline. Steps 42 and 43 were docs/spec-only. Before adding Step 44 or more runtime behavior, the source-change set should be validated together in Codex.
+
+Locked outcome: active planning docs now identify external validation as the immediate next action, and a Codex prompt has been added under `docs/project/`.
+
+Boundary: this checkpoint does not execute Gadgets, call providers, add runtime commands, store provider credentials, enforce data exposure, make compliance claims, hard-deny pack loading, add signing tools, mutate trust roots, install packs, download packs, add Linux admin behavior, add database behavior, add cloud behavior, add deployment behavior, broaden Git behavior, or allow provider-side action bypass.

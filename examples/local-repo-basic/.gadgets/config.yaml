@@ -21,6 +21,58 @@ model_profiles:
 installed_packs:
   - developer
 
+# Step 43 future AI risk inventory settings. These comments document the
+# reserved config shape only; no runtime provider/model inventory enforcement
+# is implemented in Step 43.
+# ai_risk:
+#   provider_model_inventory:
+#     enabled: true
+#     require_inventory_for_live_providers: true
+#     require_inventory_for_team_mode: true
+#     require_inventory_for_production_mode: true
+#     default_data_label: internal
+#     providers:
+#       - id: mock
+#         display_name: Deterministic Mock Provider
+#         adapter: mock
+#         status: enabled
+#         network_access: false
+#         credential_env: ""
+#         approved_modes: [safe, team, production]
+#         allowed_data_labels: [public, internal]
+#         denied_data_labels: [sensitive, secret, secret_prohibited]
+#         retention_notes: local deterministic provider; no external retention
+#         review_owner: ""
+#         review_status: approved
+#     model_profiles:
+#       - profile: mock_default
+#         provider_id: mock
+#         model: deterministic-mock
+#         status: enabled
+#         purpose: deterministic local testing
+#         approved_modes: [safe, team, production]
+#         allowed_task_kinds: [repo.inspect]
+#         allowed_packs: [developer]
+#         allowed_data_labels: [public, internal]
+#         denied_data_labels: [sensitive, secret, secret_prohibited]
+#         review_status: approved
+
+# Step 37 pack-load trust gate settings. This gate is dry-run only:
+# Safe Mode warns, Team and Production record would-deny outcomes, and
+# no runtime hard-deny pack-load enforcement is enabled yet.
+pack_trust:
+  enabled: true
+  enforcement:
+    safe: warn-only
+    team: dry-run-deny
+    production: dry-run-deny
+  safe_mode:
+    allow_unsigned_local_packs: true
+  evidence:
+    require_for_pack_load_decisions: true
+  audit:
+    require_for_pack_load_decisions: true
+
 zones:
   local_repo:
     type: local_repo

@@ -27,9 +27,9 @@ Repository license files:
 
 ## Validation baseline
 
-Status: closed for current Step 35 baseline.
+Status: closed for Step 35 source baseline; pending for Step 37 through Step 41 source changes. Steps 42 and 43 are docs/spec only.
 
-The current validated baseline is commit `14b0a4f`. The full external Rust validation flow passed on Rust/Cargo 1.89.0:
+The current externally validated source baseline is commit `14b0a4f`. The full external Rust validation flow passed on Rust/Cargo 1.89.0:
 
 ```text
 cargo fmt --check                                      PASS
@@ -39,7 +39,7 @@ cargo clippy --all-targets --all-features -- -D warnings  PASS
 cargo build --release                                 PASS
 ```
 
-The previous validated baseline was commit `c5fbd78`. Commit `14b0a4f` supersedes it for Step 35 source. Future code changes must be revalidated before they become a new authoritative baseline.
+The previous validated baseline was commit `c5fbd78`. Commit `14b0a4f` supersedes it for Step 35 source. Steps 37 through 41 introduce source changes for the dry-run pack-load trust gate and related reporting. They require a new external validation run before they become a new authoritative validated baseline. Steps 42 and 43 are docs/spec/config-example only.
 
 
 ## Developer MVP alpha packaging
@@ -117,9 +117,9 @@ Step 25 centralized best-effort redaction for current evidence-producing provide
 
 ## Pack trust and signing
 
-Status: design locked; inspection scaffold implemented; enforcement not implemented.
+Status: diagnostics implemented; dry-run runtime gate implemented at checkpoint level; hard-deny enforcement not implemented.
 
-Step 26 defines the pack trust/signing design in `specs/PACK_TRUST_SIGNING_SPEC.md`. Step 27 adds non-enforcing `gadgets pack trust check [--project <path>] <pack>` diagnostics. Step 28 adds non-enforcing `gadgets pack trust roots [--project <path>]` trust-root diagnostics. Step 29 defines the evidence and audit contract for pack trust checks, trust-root loading, signature verification, and pack-load denials. Step 30 emits diagnostic evidence and audit for the trust check and trust-root inspection commands. Step 31 adds non-enforcing `gadgets pack trust preview [--project <path>] [--mode safe|team|production] <pack>` policy preview diagnostics. Step 34 adds non-enforcing Ed25519 verification diagnostics to `gadgets pack trust signature`. Step 35 updates `gadgets pack trust preview` to consume those real signature diagnostics while remaining non-enforcing.
+Step 26 defines the pack trust/signing design in `specs/PACK_TRUST_SIGNING_SPEC.md`. Step 27 adds non-enforcing `gadgets pack trust check [--project <path>] <pack>` diagnostics. Step 28 adds non-enforcing `gadgets pack trust roots [--project <path>]` trust-root diagnostics. Step 29 defines the evidence and audit contract for pack trust checks, trust-root loading, signature verification, and pack-load denials. Step 30 emits diagnostic evidence and audit for the trust check and trust-root inspection commands. Step 31 adds non-enforcing `gadgets pack trust preview [--project <path>] [--mode safe|team|production] <pack>` policy preview diagnostics. Step 34 adds non-enforcing Ed25519 verification diagnostics to `gadgets pack trust signature`. Step 35 updates `gadgets pack trust preview` to consume those real signature diagnostics while remaining non-enforcing. Step 36 defines the enforcement states, dry-run gate, effective source classification, evidence/audit failure behavior, rollback behavior, and config shape. Step 37 adds the first runtime dry-run gate before implemented Developer Pack actions; it writes warning or would-deny evidence/audit but does not hard-deny pack loading. Step 38 adds a diagnostic `gate-preview` command that reports the configured gate outcome for an installed pack and operation without executing Gadgets. Step 39 adds a read-only `gate-history` command that filters prior trust-gate audit events for operator review. Step 40 adds a read-only `gate-status` command for current trust-gate configuration posture. Step 41 adds a read-only `gate-summary` command for trust-gate event counts and hard-deny review posture.
 
 Locked decisions:
 
@@ -129,16 +129,18 @@ Locked decisions:
 - Signed packs should use a deterministic content manifest and detached signature record.
 - Recommended primitives are SHA-256 and Ed25519.
 - Safe mode can allow explicit unsigned local development packs with audit warning.
-- Team mode should require signed non-built-in packs except explicit policy exceptions.
-- Production mode should fail closed for unsigned, unknown, expired, mismatched, or invalid packs.
+- Team mode should start with dry-run deny for unsigned, unknown, expired, mismatched, or invalid non-built-in packs.
+- Production mode should start with dry-run deny and later move to hard-deny only after explicit approval.
+- Effective built-in trust applies only when both the pack manifest and all loaded Gadget manifests are built-in runtime assets.
+- Built-in packs with project-local Gadget overrides are `project_local_mixed` and follow project-local trust rules.
 
 Still open for implementation:
 
-- pack-load cryptographic signature enforcement
+- external validation of the Step 37 dry-run-only gate, Step 38 gate-preview reporting, Step 39 gate-history reporting, Step 40 gate-status reporting, and Step 41 gate-summary reporting
+- later hard-deny enforcement after dry-run review
 - trust-root management commands
 - pack signing tooling
 - registry/install/update behavior
-- enforcement timing for Team/Production mode
 
 ## Git branch and commit hardening
 
@@ -194,16 +196,15 @@ Still open:
 - whether to support fork-style head refs later
 - whether remote PR creation should remain permanently manual-only
 
-## Step 32 status
+## Step 32 through Step 41 status
 
-Closed for Step 32: non-cryptographic signature metadata diagnostics.
+Closed by Steps 32-37: signature metadata diagnostics, Ed25519 verification diagnostics, signature-aware policy preview, enforcement-state design, dry-run gate design, effective source classification, and narrow dry-run-only pack-load gate implementation.
 
 Still open for later steps:
 
-- canonical signature payload format
-- cryptographic verification implementation
+- external validation of the Step 37 through Step 41 source checkpoint
+- hard-deny enforcement after dry-run review
 - key algorithm support beyond the current `ed25519` metadata contract
-- Team/Production enforcement timing
 - signing tooling
 
 ## Closed in Step 33 - cryptographic verification byte contract
@@ -219,9 +220,9 @@ Closed for design:
 
 Still open for implementation:
 
-- Ed25519 verification code
+- external validation of the Step 37 through Step 41 source checkpoint
 - signing tools
-- Team/Production pack-load enforcement
+- later hard-deny enforcement after dry-run review
 - trust-root mutation commands
 - registry and pack install/update flows
 
@@ -242,3 +243,105 @@ Locked outcomes:
 Closed for Step 35: pack trust policy preview consumes real signature diagnostics.
 
 The preview command now reports signature metadata decision, signature presence, cryptographic verification performed/valid status, content-manifest validity, and expiration status. Safe Mode still allows local development packs with warnings. Team and Production previews allow only valid trusted signatures diagnostically. Pack trust enforcement remains deferred.
+
+
+## Step 37 closed decisions
+
+Closed for Step 37: narrow dry-run-only runtime pack-load trust gate.
+
+Locked outcomes:
+
+- `pack_trust` config is parsed with Safe `warn-only`, Team `dry-run-deny`, and Production `dry-run-deny` defaults.
+- runtime `hard-deny` remains deferred and is treated as `dry-run-deny` in Step 37.
+- Safe Mode `hard-deny` config is rejected.
+- built-in trust requires both the pack manifest and all loaded Gadget manifests to be built-in.
+- built-in pack plus project-local Gadget override is `project_local_mixed`.
+- warning and dry-run denial outcomes write evidence and audit before the Gadget action continues.
+- required evidence/audit failure fails closed for project-local and mixed-source runtime actions.
+
+Still open:
+
+- Step 37 through Step 41 external Rust validation.
+- hard-deny enforcement after dry-run evidence review.
+- richer reporting around pack-load trust metrics.
+
+
+## Step 38 closed decisions
+
+Closed for Step 38: pack-load trust gate preview reporting.
+
+Locked outcomes:
+
+- `gadgets pack trust gate-preview [--project <path>] [--operation <operation>] <pack>` reports the configured runtime gate outcome for an installed pack.
+- The command loads all declared Gadget material by default, or operation-specific Developer Pack Gadget material when `--operation` is provided.
+- The command writes diagnostic evidence and appends `pack.trust.gate.previewed` plus `evidence.created` audit events.
+- The command does not execute Gadgets, hard-deny pack loading, mutate trust roots, install packs, download packs, or run provider tools.
+
+
+## Step 39 closed decisions
+
+Closed for Step 39: pack-load trust gate history reporting.
+
+- `gadgets pack trust gate-history [--project <path>] [--limit <n>]` is read-only.
+- The command filters prior gate events from the audit ledger.
+- The command does not create evidence, append audit events, execute Gadgets, or hard-deny pack loading.
+- Hard-deny enforcement remains deferred.
+
+## Step 40 closed decisions
+
+Closed for Step 40: pack trust gate status reporting.
+
+Decision: add a read-only `gadgets pack trust gate-status [--project <path>]` command that reports current pack-trust configuration posture and hard-deny deferral without writing evidence, appending audit events, loading packs, verifying signatures, executing Gadgets, or enforcing hard-deny pack loading.
+
+## Step 41 closed decisions
+
+Closed for Step 41: pack trust gate summary reporting.
+
+Decision: add a read-only `gadgets pack trust gate-summary [--project <path>]` command that reads local configuration and prior trust-gate audit events, reports event counts, and prints a review posture for future hard-deny discussions without writing evidence, appending audit events, loading packs, verifying signatures, executing Gadgets, or enforcing hard-deny pack loading.
+
+
+## Step 42 closed decisions
+
+Closed for Step 42: AI RMF alignment and governance profile design.
+
+Decision: add a docs/spec-only alignment model that maps Gadgets controls to NIST AI RMF-style Govern, Map, Measure, and Manage functions. This is an engineering alignment and not a compliance claim.
+
+Locked outcomes:
+
+- Governance maps to policies, approvals, runtime modes, pack trust, evidence requirements, and audit records.
+- Mapping maps to provider profiles, model inventory, packs, Gadgets, capabilities, zones, data exposure labels, and effective source classification.
+- Measurement maps to evidence bundles, audit verification, policy outcomes, trust-gate counts, signature diagnostics, redaction metrics, and test results.
+- Management maps to Safe Mode, approval gates, dry-run/hard-deny states, rollback guidance, incident events, provider disablement, and containment procedures.
+
+Still open:
+
+- runtime AI risk inventory commands
+- runtime data exposure enforcement
+- AI risk incident event emission
+- AI risk reporting
+- external validation of Steps 37 through 41 is now the immediate next action
+- hard-deny enforcement after dry-run evidence review
+
+
+## Step 43 closed decisions
+
+Closed for Step 43: provider and model inventory design.
+
+Decision: add a docs/spec-only provider/model inventory contract that complements existing `model_profiles`. The inventory records governance metadata such as provider status, review status, network posture, approved runtime modes, allowed data labels, denied data labels, retention notes, model profile purpose, allowed task kinds, allowed packs, and allowed Gadgets.
+
+Locked outcomes:
+
+- provider inventory does not replace provider profiles
+- inventory must never store secret values or provider credentials
+- environment variable names may be recorded as non-secret configuration shape
+- live provider use should require explicit inventory and review before Team or Production use in future work
+- future enforcement should start with read-only reporting, then warning-only or dry-run checks before any hard-deny behavior
+
+Still open:
+
+- runtime provider/model inventory report command
+- runtime data exposure label enforcement
+- provider disablement workflow
+- AI risk incident emission
+- external validation of Steps 37 through 41 is now the immediate next action
+- hard-deny enforcement after dry-run evidence review

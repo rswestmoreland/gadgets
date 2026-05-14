@@ -79,3 +79,19 @@ Provider adapters must not expose raw tool execution APIs to models.
 ## Patch Writer handoff
 
 Providers may propose a `patch.writer` handoff with `task_kind: repo.patch.plan` for patch/change/test/doc/fix requests. Runtime must still validate the handoff and then policy-check the `patch.plan` action before evidence is created. Providers must not claim that a patch was applied.
+
+## Provider and model inventory design
+
+Step 43 defines a future provider/model inventory layer in `specs/PROVIDER_MODEL_INVENTORY_SPEC.md`.
+
+The inventory does not replace provider profiles. Provider profiles define how the runtime calls an adapter and model. The inventory defines why that provider/profile is approved, where it may be used, what data labels it may receive, and what review evidence supports that use.
+
+Provider adapters must continue to follow these rules:
+
+- They must not execute tools directly.
+- They must not decide approval, policy, or zone outcomes.
+- They must not receive secret values unless a future policy explicitly allows a safe non-secret representation.
+- They must not expose provider SDK tool-calling as a runtime authority boundary.
+- They must not treat inventory approval as permission to bypass Gadget policy.
+
+Future provider/model inventory reports may record provider IDs, model profile names, model identifiers, adapter names, environment variable names, data exposure labels, review status, and retention notes. They must not record API key values, token values, private keys, signing material, or secret-bearing config.

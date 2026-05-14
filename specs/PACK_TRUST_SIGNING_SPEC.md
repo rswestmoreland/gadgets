@@ -457,3 +457,127 @@ The preview uses these inputs:
 - trust-root expiration status
 
 Safe Mode remains developer-friendly and allows project-local packs with warnings when signatures are not verified. Team and Production previews allow project-local packs only when the signature diagnostic result is a valid trusted signature. These are diagnostic preview outcomes only and are not enforcement decisions.
+
+## Step 36 enforcement and dry-run gate design
+
+Step 36 locks the future enforcement model without implementing pack-load denial.
+
+### Enforcement states
+
+- `off`: do not evaluate pack-load trust as a gate.
+- `warn-only`: evaluate and warn, but allow loading.
+- `dry-run-deny`: evaluate and record would-deny evidence/audit, but allow loading.
+- `hard-deny`: evaluate and deny loading before Gadget execution.
+
+### Mode behavior
+
+Recommended defaults for first implementation:
+
+- Safe Mode: `warn-only`.
+- Team Mode: `dry-run-deny`.
+- Production Mode: `dry-run-deny` first, with `hard-deny` requiring later explicit approval.
+
+Built-in packs are allowed only when the effective source is fully built-in. Project-local and mixed-source packs follow project-local trust behavior. Team and Production deny outcomes include unsigned packs, unknown publishers, unknown keys, invalid signatures, content mismatches, expired signatures, and expired trust roots.
+
+### Effective source requirement
+
+A pack is effectively built-in only when the pack manifest and every loaded Gadget manifest are built-in runtime assets. A built-in pack with project-local Gadget overrides is `project_local_mixed` and must not be treated as built-in trusted material.
+
+### Future config shape
+
+```yaml
+pack_trust:
+  enabled: true
+  enforcement:
+    safe: warn-only
+    team: dry-run-deny
+    production: dry-run-deny
+  safe_mode:
+    allow_unsigned_local_packs: true
+  evidence:
+    require_for_pack_load_decisions: true
+  audit:
+    require_for_pack_load_decisions: true
+```
+
+### Failure behavior
+
+When a pack-load trust gate is active, required evidence and audit are part of the gate. If evidence cannot be written or audit cannot be appended, runtime actions for project-local or mixed-source packs must not proceed.
+
+### Rollout
+
+The next implementation step should be a narrow dry-run gate. Hard-deny enforcement should wait until dry-run evidence is reviewed and explicitly approved.
+
+## Step 37 pack-load trust dry-run gate
+
+Step 37 implements the first runtime pack-load trust gate as dry-run only.
+
+The gate is evaluated before implemented Developer Pack runtime actions. It uses the effective source class of the loaded pack material:
+
+- `builtin`: pack manifest and every loaded Gadget manifest are built-in runtime assets.
+- `project_local`: pack manifest comes from project-local files.
+- `project_local_mixed`: built-in pack manifest plus one or more project-local Gadget overrides.
+
+The gate uses signature-aware policy preview results as inputs. A project-local pack with a verified trusted signature may proceed without warning. Mixed-source material is not considered covered by the built-in pack trust decision because local Gadget overrides are project-local manifest material.
+
+Step 37 records warning and dry-run denial outcomes with evidence and audit. It does not emit authoritative hard-deny events and does not block pack loading based on the trust decision alone.
+
+Configured `hard-deny` is treated as `dry-run-deny` in Step 37. Safe Mode `hard-deny` is rejected by config validation.
+
+
+## Step 38 pack-load trust gate preview reporting
+
+Step 38 adds a diagnostic runtime gate preview command:
+
+```text
+gadgets pack trust gate-preview [--project <path>] [--operation <operation>] <pack>
+```
+
+The command reports how the configured Step 37 dry-run gate would classify an installed pack before a runtime action. It includes runtime mode, configured enforcement, effective Step 37 enforcement, hard-deny deferral, effective source kind, loaded Gadget source material, signature coverage, and the resulting gate action.
+
+Supported gate actions are:
+
+```text
+disabled
+off
+builtin-bypass
+verified-signature
+warn-only
+dry-run-deny
+```
+
+The command is diagnostic. It writes evidence and audit records for review, but it does not execute Gadgets, enforce hard-deny, mutate trust roots, install packs, download packs, or run provider tools.
+
+
+## Step 39 pack-load trust gate history reporting
+
+Step 39 adds read-only reporting over prior trust-gate audit events:
+
+```text
+gadgets pack trust gate-history [--project <path>] [--limit <n>]
+```
+
+The report is intended to help operators review Safe warnings, Team/Production dry-run denials, diagnostic previews, and future hard-denial events before changing enforcement posture. It does not execute Gadgets, does not create evidence, does not append audit records, and does not enforce hard-deny.
+
+
+## Step 40 pack trust gate status reporting
+
+Step 40 adds a diagnostic status command:
+
+```text
+gadgets pack trust gate-status [--project <path>]
+```
+
+The command reports the configured pack-trust posture from local config, including enabled state, runtime mode, configured and effective Step 37 enforcement states, hard-deny deferral, Safe Mode unsigned-local behavior, evidence/audit requirements, installed packs, and ledger path.
+
+It is read-only. It does not evaluate a specific pack, verify signatures, mutate trust roots, write evidence, append audit, or enforce hard-deny loading.
+
+## Step 41 pack trust gate summary reporting
+
+Step 41 adds a read-only summary command:
+
+```bash
+gadgets pack trust gate-summary [--project <path>]
+```
+
+The command summarizes existing pack-load trust gate audit events and reports a review posture for future hard-deny discussion. It does not change signature verification, trust roots, signing metadata, or enforcement behavior. Hard-deny remains deferred until dry-run evidence and summaries are reviewed and explicitly approved.
