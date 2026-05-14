@@ -21,8 +21,8 @@ use gadgets_evidence::{
     verify_bundle_hash, EvidenceTextArtifact, EvidenceWriteReport, EvidenceWriteRequest,
 };
 use gadgets_ledger::{
-    append_event, default_ledger_path, new_audit_event, read_events, summarize_events, verify_ledger,
-    with_target,
+    append_event, default_ledger_path, new_audit_event, read_events, summarize_events,
+    verify_ledger, with_target,
 };
 use gadgets_policy::RuntimeMode;
 use gadgets_provider::{
@@ -891,7 +891,11 @@ fn handle_pack_trust(args: Vec<String>) {
             }
             let start = rows.len().saturating_sub(limit);
             println!("Pack-load trust gate history: {}", ledger_path.display());
-            println!("Showing {} of {} matching events", rows.len() - start, rows.len());
+            println!(
+                "Showing {} of {} matching events",
+                rows.len() - start,
+                rows.len()
+            );
             println!();
             for event in &rows[start..] {
                 let target = event
@@ -1337,7 +1341,6 @@ fn append_pack_trust_audit(
     Ok(())
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PackLoadTrustGateAction {
     Disabled,
@@ -1471,7 +1474,6 @@ fn pack_load_trust_gate_decision(
     }
 }
 
-
 fn run_pack_load_trust_dry_run_gate(
     project_root: &Path,
     config: &RuntimeConfig,
@@ -1482,7 +1484,8 @@ fn run_pack_load_trust_dry_run_gate(
     run_id: &str,
 ) -> Result<(), String> {
     let effective_source = effective_pack_source_kind(loaded_pack, loaded_gadgets);
-    let initial_decision = pack_load_trust_gate_decision(config, runtime_mode, effective_source, false);
+    let initial_decision =
+        pack_load_trust_gate_decision(config, runtime_mode, effective_source, false);
     if !initial_decision.should_record {
         return Ok(());
     }
@@ -1539,11 +1542,7 @@ fn run_pack_load_trust_dry_run_gate(
 
     let gate_run_id = format!("{}_pack_trust", run_id);
     let created_at = unix_timestamp_label();
-    if config
-        .pack_trust
-        .evidence
-        .require_for_pack_load_decisions
-    {
+    if config.pack_trust.evidence.require_for_pack_load_decisions {
         let evidence = write_pack_load_trust_gate_evidence(
             project_root,
             &gate_run_id,
@@ -1593,9 +1592,7 @@ fn run_pack_load_trust_dry_run_gate(
             &summary,
         )
         .map_err(|err| {
-            format!(
-                "pack-load trust gate failed closed because audit could not be appended: {err}"
-            )
+            format!("pack-load trust gate failed closed because audit could not be appended: {err}")
         })?;
     }
 
@@ -1618,12 +1615,8 @@ fn write_pack_load_trust_gate_evidence(
     decision: &str,
     summary: &str,
 ) -> Result<EvidenceWriteReport, gadgets_evidence::EvidenceError> {
-    let mut request = EvidenceWriteRequest::observe(
-        run_id,
-        "pack.trust",
-        created_at,
-        summary.to_string(),
-    );
+    let mut request =
+        EvidenceWriteRequest::observe(run_id, "pack.trust", created_at, summary.to_string());
     let mut artifacts = vec![
         EvidenceTextArtifact::new(
             "pack_load_trust_decision",
@@ -2221,7 +2214,10 @@ fn pack_load_gate_preview_gadget_names(
     }
 
     let gadgets = match operation {
-        "ask" => vec![FILESYSTEM_READ_GADGET.to_string(), PATCH_WRITER_GADGET.to_string()],
+        "ask" => vec![
+            FILESYSTEM_READ_GADGET.to_string(),
+            PATCH_WRITER_GADGET.to_string(),
+        ],
         "git.status"
         | "git.branch.create"
         | "git.commit.approved-patch"
@@ -2300,15 +2296,24 @@ fn print_pack_trust_preview_report(report: &PackTrustPolicyPreviewReport) {
 
 fn pack_trust_effective_state_rows(
     config: &RuntimeConfig,
-) -> Vec<(RuntimeMode, PackTrustEnforcementState, PackTrustEnforcementState, bool)> {
-    [RuntimeMode::Safe, RuntimeMode::Team, RuntimeMode::Production]
-        .into_iter()
-        .map(|mode| {
-            let configured = config.pack_trust.state_for_mode(mode);
-            let effective = configured.effective_step37_state();
-            (mode, configured, effective, configured != effective)
-        })
-        .collect()
+) -> Vec<(
+    RuntimeMode,
+    PackTrustEnforcementState,
+    PackTrustEnforcementState,
+    bool,
+)> {
+    [
+        RuntimeMode::Safe,
+        RuntimeMode::Team,
+        RuntimeMode::Production,
+    ]
+    .into_iter()
+    .map(|mode| {
+        let configured = config.pack_trust.state_for_mode(mode);
+        let effective = configured.effective_step37_state();
+        (mode, configured, effective, configured != effective)
+    })
+    .collect()
 }
 
 fn print_pack_trust_gate_status_report(
@@ -2338,10 +2343,7 @@ fn print_pack_trust_gate_status_report(
     );
     println!(
         "Evidence required for pack-load trust decisions: {}",
-        config
-            .pack_trust
-            .evidence
-            .require_for_pack_load_decisions
+        config.pack_trust.evidence.require_for_pack_load_decisions
     );
     println!(
         "Audit required for pack-load trust decisions: {}",
@@ -2374,17 +2376,17 @@ fn print_pack_trust_gate_summary_report(
     println!("Runtime mode: {}", runtime_mode.as_str());
     println!("Pack trust enabled: {}", config.pack_trust.enabled);
     println!("Configured enforcement: {}", configured_state.as_str());
-    println!("Effective Step 37 enforcement: {}", effective_state.as_str());
+    println!(
+        "Effective Step 37 enforcement: {}",
+        effective_state.as_str()
+    );
     println!(
         "Hard-deny deferred: {}",
         configured_state != effective_state
     );
     println!(
         "Evidence required: {}",
-        config
-            .pack_trust
-            .evidence
-            .require_for_pack_load_decisions
+        config.pack_trust.evidence.require_for_pack_load_decisions
     );
     println!(
         "Audit required: {}",
@@ -2398,13 +2400,17 @@ fn print_pack_trust_gate_summary_report(
     println!("  - warnings: {}", summary.warnings);
     println!("  - dry-run denials: {}", summary.dry_run_denials);
     println!("  - future hard denials: {}", summary.hard_denials);
-    println!("  - future pack-load denials: {}", summary.pack_load_denials);
+    println!(
+        "  - future pack-load denials: {}",
+        summary.pack_load_denials
+    );
     println!();
     println!("Review posture: {posture}");
     println!();
     println!("This command is read-only. It does not execute Gadgets, write evidence, append audit records, verify signatures, or enforce hard-deny pack loading.");
 }
 
+#[allow(clippy::too_many_arguments)]
 fn print_pack_load_trust_gate_preview_report(
     report: &PackTrustPolicyPreviewReport,
     loaded_pack: &LoadedPackManifest,
@@ -2439,10 +2445,7 @@ fn print_pack_load_trust_gate_preview_report(
     );
     println!(
         "Evidence required for pack-load decisions: {}",
-        config
-            .pack_trust
-            .evidence
-            .require_for_pack_load_decisions
+        config.pack_trust.evidence.require_for_pack_load_decisions
     );
     println!(
         "Audit required for pack-load decisions: {}",
@@ -3236,7 +3239,7 @@ fn handle_git(args: Vec<String>) {
                 &config,
                 runtime_mode,
                 &loaded_pack,
-                &[loaded_git.clone()],
+                std::slice::from_ref(&loaded_git),
                 "git.status",
                 &run_id,
             ) {
@@ -3345,7 +3348,7 @@ fn handle_git(args: Vec<String>) {
                         &config,
                         runtime_mode,
                         &loaded_pack,
-                        &[loaded_git.clone()],
+                        std::slice::from_ref(&loaded_git),
                         "git.branch.create",
                         &run_id,
                     ) {
@@ -3464,7 +3467,7 @@ fn handle_git(args: Vec<String>) {
                         &config,
                         runtime_mode,
                         &loaded_pack,
-                        &[loaded_git.clone()],
+                        std::slice::from_ref(&loaded_git),
                         "git.commit.approved-patch",
                         &run_id,
                     ) {
@@ -3599,7 +3602,7 @@ fn handle_git(args: Vec<String>) {
                         &config,
                         runtime_mode,
                         &loaded_pack,
-                        &[loaded_git.clone()],
+                        std::slice::from_ref(&loaded_git),
                         "git.pr.body",
                         &run_id,
                     ) {
@@ -3701,7 +3704,7 @@ fn handle_git(args: Vec<String>) {
                         &config,
                         runtime_mode,
                         &loaded_pack,
-                        &[loaded_git.clone()],
+                        std::slice::from_ref(&loaded_git),
                         "git.pr.create",
                         &run_id,
                     ) {
@@ -3865,7 +3868,7 @@ fn handle_test(args: Vec<String>) {
                 &config,
                 runtime_mode,
                 &loaded_pack,
-                &[loaded_test_runner.clone()],
+                std::slice::from_ref(&loaded_test_runner),
                 "test.run",
                 &test_run_id,
             ) {
@@ -3994,7 +3997,7 @@ fn handle_patch(args: Vec<String>) {
                 &config,
                 runtime_mode,
                 &loaded_pack,
-                &[loaded_patch_writer.clone()],
+                std::slice::from_ref(&loaded_patch_writer),
                 "patch.apply",
                 &apply_run_id,
             ) {
@@ -4537,8 +4540,14 @@ mod pack_load_trust_gate_tests {
             false,
         );
 
-        assert_eq!(decision.configured_state, PackTrustEnforcementState::HardDeny);
-        assert_eq!(decision.effective_state, PackTrustEnforcementState::DryRunDeny);
+        assert_eq!(
+            decision.configured_state,
+            PackTrustEnforcementState::HardDeny
+        );
+        assert_eq!(
+            decision.effective_state,
+            PackTrustEnforcementState::DryRunDeny
+        );
         assert_eq!(decision.action, PackLoadTrustGateAction::DryRunDeny);
         assert!(decision.hard_deny_deferred);
         assert!(decision.would_continue_step37);
@@ -4594,8 +4603,12 @@ mod pack_load_trust_gate_tests {
     #[test]
     fn gate_history_event_filter_matches_gate_events_only() {
         assert!(is_pack_trust_gate_history_event("pack.trust.warning"));
-        assert!(is_pack_trust_gate_history_event("pack.trust.dry_run_denied"));
-        assert!(is_pack_trust_gate_history_event("pack.trust.gate.previewed"));
+        assert!(is_pack_trust_gate_history_event(
+            "pack.trust.dry_run_denied"
+        ));
+        assert!(is_pack_trust_gate_history_event(
+            "pack.trust.gate.previewed"
+        ));
         assert!(is_pack_trust_gate_history_event("pack.trust.denied"));
         assert!(is_pack_trust_gate_history_event("pack.load.denied"));
         assert!(!is_pack_trust_gate_history_event("evidence.created"));
@@ -4678,11 +4691,13 @@ mod pack_load_trust_gate_tests {
 
         assert_eq!(
             pack_load_gate_preview_gadget_names(DEVELOPER_PACK, Some("ask"), &pack).unwrap(),
-            vec![FILESYSTEM_READ_GADGET.to_string(), PATCH_WRITER_GADGET.to_string()]
+            vec![
+                FILESYSTEM_READ_GADGET.to_string(),
+                PATCH_WRITER_GADGET.to_string()
+            ]
         );
         assert_eq!(
-            pack_load_gate_preview_gadget_names(DEVELOPER_PACK, Some("git.status"), &pack)
-                .unwrap(),
+            pack_load_gate_preview_gadget_names(DEVELOPER_PACK, Some("git.status"), &pack).unwrap(),
             vec![GIT_PR_GADGET.to_string()]
         );
         assert_eq!(
