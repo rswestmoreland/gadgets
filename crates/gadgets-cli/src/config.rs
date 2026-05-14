@@ -189,7 +189,6 @@ pub struct ModelProfileConfig {
     pub endpoint: Option<String>,
 }
 
-
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct PackTrustConfig {
     #[serde(default = "default_pack_trust_enabled")]
